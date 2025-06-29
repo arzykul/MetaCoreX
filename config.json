@@ -1,0 +1,8 @@
+{
+  "version": "0.1.0",
+  "kernel": "MetaCoreXKernel",
+  "description": "Minimal core OS contract for MetaCoreX",
+  "modules": [],
+  "author": "Arzykul Muratov",
+  "network": "Ethereum-compatible"
+}
