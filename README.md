@@ -32,7 +32,7 @@ for real people already living online.
 
 ## 📄 Whitepaper
 
-📘 [Download Whitepaper (v1.3, PDF)](./MetaCoreX_Whitepaper_FINAL_v1.3.pdf)
+📘 [Download Whitepaper (v1, PDF)](./MetaCoreX_Whitepaper_FINAL_v1.3.pdf)
 
 Includes:
 - Tokenomics (ARZY-G Standard v2.1)
