@@ -435,7 +435,11 @@
           </div>
           <div class="stat-row">
             <span class="stat-key">NETWORK</span>
-            <span class="stat-val good">HARDHAT LOCAL</span>
+            <span class="stat-val warn" id="networkStatus">NODE OFFLINE</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-key">BLOCK</span>
+            <span class="stat-val" id="blockNumber">—</span>
           </div>
         </div>
         <div class="counter-grid" style="margin-top:14px;">
@@ -493,7 +497,10 @@
       <!-- Actions -->
       <div class="card">
         <div class="card-label">System Actions</div>
-        <button class="btn green" onclick="runDemo()">
+        <button class="btn green" id="btnMintOnChain" onclick="mintOnChain()" style="border-color: var(--green-dim); margin-bottom:14px; opacity:.5; cursor:not-allowed;" disabled>
+          <span class="btn-icon">⛓</span>MINT ON-CHAIN
+        </button>
+        <button class="btn" onclick="runDemo()">
           <span class="btn-icon">▶</span>RUN DEMO SEQUENCE
         </button>
         <button class="btn" onclick="emitEvent('MintRequested')">
@@ -700,7 +707,81 @@
       appendLog('LOCAL', { message: msg }, Date.now());
     }
 
+    // ─── Blockchain data polling ─────────────────────────────────────────────
+    async function fetchContractInfo() {
+      try {
+        const r = await fetch('/api/contract/info');
+        const info = await r.json();
+
+        if (info.connected) {
+          // Address
+          document.getElementById('coreAddress').textContent = truncAddr(info.address);
+
+          // Balances (deployer holds initial supply)
+          const bal = parseFloat(info.deployerBalance);
+          const sup = parseFloat(info.totalSupply);
+          document.getElementById('tokenBalance').textContent = formatNum(bal);
+          document.getElementById('totalMinted').textContent  = formatNum(sup);
+
+          // Network
+          const netEl = document.getElementById('networkStatus');
+          netEl.textContent  = `HARDHAT:${info.chainId}`;
+          netEl.className    = 'stat-val good';
+
+          // Block
+          document.getElementById('blockNumber').textContent = '#' + info.blockNumber;
+
+          // Enable on-chain mint button
+          const btn = document.getElementById('btnMintOnChain');
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          btn.style.cursor  = 'pointer';
+        } else {
+          const netEl = document.getElementById('networkStatus');
+          netEl.textContent = 'NODE OFFLINE';
+          netEl.className   = 'stat-val warn';
+
+          const btn = document.getElementById('btnMintOnChain');
+          btn.disabled = true;
+          btn.style.opacity = '.5';
+          btn.style.cursor  = 'not-allowed';
+        }
+      } catch (_) { /* silent */ }
+    }
+
+    function formatNum(n) {
+      return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    }
+    function truncAddr(a) {
+      return a ? a.slice(0, 6) + '…' + a.slice(-4) : '—';
+    }
+
     // ─── Actions ─────────────────────────────────────────────────────────────
+    async function mintOnChain() {
+      const btn = document.getElementById('btnMintOnChain');
+      btn.disabled = true;
+      btn.style.opacity = '.5';
+      logLocal('⛓ Submitting on-chain mint request via Chainlink Functions…');
+      try {
+        const r = await fetch('/api/contract/mint-demo', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}) });
+        const j = await r.json();
+        if (j.ok) {
+          logLocal('⛓ requestTx: ' + j.requestTxHash);
+          logLocal('⛓ fulfillTx: ' + j.fulfillTxHash);
+          await fetchContractInfo(); // refresh balances
+        } else {
+          logLocal('✕ Mint failed: ' + (j.error || 'unknown'));
+        }
+      } catch (e) {
+        logLocal('✕ Mint error: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
+    }
+
     async function runDemo() {
       logLocal('→ Starting demo sequence…');
       try {
@@ -760,6 +841,8 @@
 
     // ─── Boot ─────────────────────────────────────────────────────────────────
     connect();
+    fetchContractInfo();
+    setInterval(fetchContractInfo, 5000);
   </script>
 </body>
 </html>

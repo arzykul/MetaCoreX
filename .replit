@@ -11,6 +11,26 @@ env = { "CI" = "true" }
 [workflows]
 runButton = "Project"
 
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Hardhat Local Node"
+
+[[workflows.workflow]]
+name = "Hardhat Local Node"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "HARDHAT_DISABLE_TELEMETRY_PROMPT=true pnpm --filter @workspace/contracts run node"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true

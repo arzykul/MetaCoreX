@@ -3,6 +3,7 @@ import app from "./app.js";
 import { createWsServer, handleUpgrade } from "./ws/wsServer.js";
 import { logger } from "./lib/logger.js";
 import { mcxEventBus } from "./ws/eventBus.js";
+import { contractService } from "./services/contractService.js";
 
 const rawPort = process.env["PORT"];
 
@@ -34,6 +35,11 @@ server.listen(port, () => {
       version: "2.1",
     });
   }, 500);
+
+  // Initialize blockchain bridge (non-blocking — retries automatically)
+  contractService.init().catch((err) => {
+    logger.warn({ err }, "contractService init error");
+  });
 });
 
 server.on("error", (err) => {

@@ -1,0 +1,1 @@
+- [pnpm workspace cwd in artifacts](pnpm-artifact-cwd.md) — process.cwd() inside artifact server = artifact dir, not workspace root; go up 2 levels.
