@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MetaCoreX OS — Visual Core</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-deep:    #050508;
+      --bg-panel:   #0b0c14;
+      --bg-card:    #0f1120;
+      --border:     #1a1d35;
+      --border-glow:#2a2d5a;
+      --cyan:       #00e5ff;
+      --cyan-dim:   #007a8a;
+      --green:      #00ff88;
+      --green-dim:  #007040;
+      --purple:     #8b5cf6;
+      --purple-dim: #4c1d95;
+      --red:        #ff4560;
+      --yellow:     #ffd60a;
+      --text:       #c8d0e8;
+      --text-dim:   #4a5070;
+      --text-mid:   #7a8ab0;
+      --font-mono:  'IBM Plex Mono', monospace;
+      --font-head:  'Orbitron', sans-serif;
+      --glow-cyan:  0 0 8px rgba(0,229,255,.45), 0 0 24px rgba(0,229,255,.15);
+      --glow-green: 0 0 8px rgba(0,255,136,.45), 0 0 24px rgba(0,255,136,.15);
+      --glow-red:   0 0 8px rgba(255,69,96,.5);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg-deep);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Scanline overlay ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,.04) 2px,
+        rgba(0,0,0,.04) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Grid bg ── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ── */
+    .os-shell {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      padding: 0 24px 24px;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 0 14px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-mark {
+      width: 36px; height: 36px;
+      border: 2px solid var(--cyan);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-head);
+      font-size: 14px; font-weight: 900;
+      color: var(--cyan);
+      box-shadow: var(--glow-cyan);
+      animation: pulse-border 3s ease-in-out infinite;
+    }
+    @keyframes pulse-border {
+      0%,100% { box-shadow: var(--glow-cyan); }
+      50%      { box-shadow: 0 0 16px rgba(0,229,255,.7), 0 0 40px rgba(0,229,255,.25); }
+    }
+    .logo-text { font-family: var(--font-head); font-size: 15px; font-weight: 700; letter-spacing: 2px; }
+    .logo-text span { color: var(--cyan); }
+    .logo-sub { font-size: 10px; color: var(--text-dim); letter-spacing: 3px; margin-top: 1px; }
+
+    .header-right { display: flex; align-items: center; gap: 20px; }
+
+    .version-badge {
+      font-size: 10px; letter-spacing: 2px;
+      color: var(--purple);
+      border: 1px solid var(--purple-dim);
+      padding: 3px 8px; border-radius: 3px;
+    }
+
+    .ws-indicator {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11px; color: var(--text-dim);
+    }
+    .ws-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      transition: background .3s, box-shadow .3s;
+    }
+    .ws-dot.connected   { background: var(--green); box-shadow: var(--glow-green); animation: blink 2s ease-in-out infinite; }
+    .ws-dot.error       { background: var(--red);   box-shadow: var(--glow-red); }
+    .ws-dot.connecting  { background: var(--yellow); animation: blink .8s ease-in-out infinite; }
+    @keyframes blink {
+      0%,100% { opacity: 1; }
+      50%      { opacity: .4; }
+    }
+
+    /* ── Main grid ── */
+    .grid-top {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 900px) {
+      .grid-top { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .grid-top { grid-template-columns: 1fr; }
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .3s;
+    }
+    .card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-glow), transparent);
+    }
+    .card:hover { border-color: var(--border-glow); }
+
+    .card-label {
+      font-size: 9px; letter-spacing: 3px;
+      color: var(--text-dim); text-transform: uppercase;
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-label::before {
+      content: '';
+      display: inline-block;
+      width: 12px; height: 1px;
+      background: var(--cyan-dim);
+    }
+
+    .token-balance {
+      font-family: var(--font-head);
+      font-size: 28px; font-weight: 700;
+      color: var(--cyan);
+      text-shadow: var(--glow-cyan);
+      margin-bottom: 4px;
+      letter-spacing: 1px;
+    }
+    .token-symbol { font-size: 13px; color: var(--text-dim); margin-left: 6px; }
+    .token-address {
+      font-size: 11px; color: var(--text-mid);
+      margin-top: 12px;
+      word-break: break-all;
+    }
+    .token-address span { color: var(--cyan-dim); }
+
+    .stat-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-key { color: var(--text-mid); font-size: 11px; }
+    .stat-val {
+      font-weight: 500;
+      color: var(--text);
+    }
+    .stat-val.good  { color: var(--green); text-shadow: var(--glow-green); }
+    .stat-val.warn  { color: var(--yellow); }
+    .stat-val.error { color: var(--red); }
+
+    /* Status dot inline */
+    .status-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .status-dot.active { background: var(--green); box-shadow: var(--glow-green); animation: blink 2s ease-in-out infinite; }
+    .status-dot.idle   { background: var(--yellow); }
+    .status-dot.offline{ background: var(--red); }
+
+    /* PoU bar */
+    .pou-bar-wrap {
+      margin-top: 14px;
+    }
+    .pou-bar-label {
+      display: flex; justify-content: space-between;
+      font-size: 10px; color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+    .pou-bar-track {
+      height: 6px; background: var(--border);
+      border-radius: 3px; overflow: hidden;
+    }
+    .pou-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan-dim), var(--cyan));
+      border-radius: 3px;
+      transition: width .8s cubic-bezier(.4,0,.2,1);
+      box-shadow: var(--glow-cyan);
+    }
+
+    /* ── Actions card ── */
+    .btn {
+      width: 100%; padding: 10px 14px;
+      background: transparent;
+      border: 1px solid var(--border-glow);
+      border-radius: 5px;
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      font-size: 11px; letter-spacing: 1px;
+      cursor: pointer;
+      transition: background .2s, border-color .2s, box-shadow .2s;
+      text-align: left;
+      margin-bottom: 10px;
+    }
+    .btn:last-child { margin-bottom: 0; }
+    .btn:hover {
+      background: rgba(0,229,255,.06);
+      border-color: var(--cyan);
+      box-shadow: var(--glow-cyan);
+    }
+    .btn:active { background: rgba(0,229,255,.12); }
+    .btn.red { color: var(--red); border-color: #3a1520; }
+    .btn.red:hover { background: rgba(255,69,96,.06); border-color: var(--red); box-shadow: var(--glow-red); }
+    .btn.green { color: var(--green); border-color: #0a2a18; }
+    .btn.green:hover { background: rgba(0,255,136,.06); border-color: var(--green); box-shadow: var(--glow-green); }
+    .btn-icon { margin-right: 8px; }
+
+    /* ── Terminal ── */
+    .terminal-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 340px;
+    }
+    .terminal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,.3);
+    }
+    .terminal-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 10px; letter-spacing: 3px; color: var(--text-dim);
+      text-transform: uppercase;
+    }
+    .terminal-controls {
+      display: flex; gap: 12px;
+    }
+    .term-ctrl-btn {
+      background: none; border: none; cursor: pointer;
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--text-dim); letter-spacing: 1px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      transition: color .2s, background .2s;
+    }
+    .term-ctrl-btn:hover { color: var(--text); background: var(--border); }
+
+    .terminal-body {
+      flex: 1; overflow-y: auto;
+      padding: 14px 16px;
+      scroll-behavior: smooth;
+    }
+    .terminal-body::-webkit-scrollbar { width: 4px; }
+    .terminal-body::-webkit-scrollbar-track { background: transparent; }
+    .terminal-body::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+
+    .log-entry {
+      display: flex; gap: 10px;
+      padding: 3px 0;
+      font-size: 12px;
+      animation: fadeIn .2s ease;
+      border-left: 2px solid transparent;
+      padding-left: 8px;
+      margin-bottom: 3px;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .log-time { color: var(--text-dim); white-space: nowrap; flex-shrink: 0; }
+    .log-type {
+      white-space: nowrap; flex-shrink: 0;
+      font-weight: 500; min-width: 130px;
+    }
+    .log-data { color: var(--text-mid); word-break: break-all; }
+
+    .log-entry.MintRequested  { border-color: var(--cyan-dim); }
+    .log-entry.MintRequested .log-type  { color: var(--cyan); }
+    .log-entry.TokenBirthed   { border-color: var(--green-dim); }
+    .log-entry.TokenBirthed .log-type   { color: var(--green); }
+    .log-entry.ProofRejected  { border-color: #3a1520; }
+    .log-entry.ProofRejected .log-type  { color: var(--red); }
+    .log-entry.AgentStatusChanged { border-color: var(--purple-dim); }
+    .log-entry.AgentStatusChanged .log-type { color: var(--purple); }
+    .log-entry.SystemMessage  { border-color: var(--border); }
+    .log-entry.SystemMessage .log-type  { color: var(--text-mid); }
+    .log-entry.LOCAL          { border-color: var(--border); }
+    .log-entry.LOCAL .log-type          { color: var(--text-dim); }
+
+    .term-empty {
+      color: var(--text-dim); font-size: 12px;
+      padding: 20px 0;
+    }
+
+    /* Counts */
+    .counter-grid {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 8px;
+      margin-top: 14px;
+    }
+    .counter-item {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .counter-val {
+      font-family: var(--font-head);
+      font-size: 20px; font-weight: 700;
+      color: var(--cyan);
+    }
+    .counter-label {
+      font-size: 9px; letter-spacing: 2px;
+      color: var(--text-dim); margin-top: 3px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; color: var(--text-dim); letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div class="os-shell">
+    <header>
+      <div class="logo">
+        <div class="logo-mark">MCX</div>
+        <div>
+          <div class="logo-text">META<span>CORE</span>X</div>
+          <div class="logo-sub">VISUAL CORE / OPERATING SYSTEM</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <span class="version-badge">v2.1 CANCUN</span>
+        <div class="ws-indicator">
+          <div class="ws-dot connecting" id="wsDot"></div>
+          <span id="wsStatus">CONNECTING…</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Top cards -->
+    <div class="grid-top">
+
+      <!-- Token Core -->
+      <div class="card">
+        <div class="card-label">ARZY-G Token Core</div>
+        <div class="token-balance">
+          <span id="tokenBalance">0.00</span>
+          <span class="token-symbol">ARZYG</span>
+        </div>
+        <div class="token-address">
+          <span>CORE ADDR</span>&nbsp;
+          <span id="coreAddress">0x0000…0000</span>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="stat-row">
+            <span class="stat-key">TOTAL MINTED</span>
+            <span class="stat-val" id="totalMinted">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-key">PROTOCOL FEE</span>
+            <span class="stat-val">1%</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-key">NETWORK</span>
+            <span class="stat-val good">HARDHAT LOCAL</span>
+          </div>
+        </div>
+        <div class="counter-grid" style="margin-top:14px;">
+          <div class="counter-item">
+            <div class="counter-val" id="cntMint">0</div>
+            <div class="counter-label">MINTED</div>
+          </div>
+          <div class="counter-item">
+            <div class="counter-val" id="cntBirth" style="color:var(--green)">0</div>
+            <div class="counter-label">BIRTHED</div>
+          </div>
+          <div class="counter-item">
+            <div class="counter-val" id="cntReject" style="color:var(--red)">0</div>
+            <div class="counter-label">REJECTED</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Agent Status -->
+      <div class="card">
+        <div class="card-label">AI Agent Core</div>
+        <div class="stat-row">
+          <span class="stat-key">STATUS</span>
+          <span class="stat-val good" id="agentStatus">
+            <span class="status-dot active"></span>ACTIVE
+          </span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">PoU SCORE</span>
+          <span class="stat-val" id="pouScore">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">PENDING REQUESTS</span>
+          <span class="stat-val" id="pendingReqs">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">ORACLE ENDPOINT</span>
+          <span class="stat-val" style="font-size:10px; color: var(--text-mid)">api.arzy.ai</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">CHAINLINK DON</span>
+          <span class="stat-val" style="font-size:10px;">fun-test-1</span>
+        </div>
+        <div class="pou-bar-wrap">
+          <div class="pou-bar-label">
+            <span>PROOF OF USEFULNESS</span>
+            <span id="pouPct">0%</span>
+          </div>
+          <div class="pou-bar-track">
+            <div class="pou-bar-fill" id="pouBar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="card">
+        <div class="card-label">System Actions</div>
+        <button class="btn green" onclick="runDemo()">
+          <span class="btn-icon">▶</span>RUN DEMO SEQUENCE
+        </button>
+        <button class="btn" onclick="emitEvent('MintRequested')">
+          <span class="btn-icon">⬡</span>EMIT MINT_REQUESTED
+        </button>
+        <button class="btn" onclick="emitEvent('TokenBirthed')">
+          <span class="btn-icon">✦</span>EMIT TOKEN_BIRTHED
+        </button>
+        <button class="btn red" onclick="emitEvent('ProofRejected')">
+          <span class="btn-icon">✕</span>EMIT PROOF_REJECTED
+        </button>
+        <button class="btn" onclick="clearLog()" style="margin-top:14px; color: var(--text-dim); border-color: var(--border);">
+          <span class="btn-icon">⌫</span>CLEAR LOG
+        </button>
+      </div>
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal-card">
+      <div class="terminal-header">
+        <div class="terminal-title">
+          <span style="color:var(--cyan)">◈</span>
+          SYSTEM EVENT LOG — METACOREX EVENTBUS
+        </div>
+        <div class="terminal-controls">
+          <button class="term-ctrl-btn" id="scrollToggle" onclick="toggleAutoScroll()">AUTO-SCROLL: ON</button>
+        </div>
+      </div>
+      <div class="terminal-body" id="terminal">
+        <div class="term-empty" id="termEmpty">[ waiting for events… ]</div>
+      </div>
+    </div>
+
+    <footer>
+      <span>METACOREX OS — WEB4 INFRASTRUCTURE</span>
+      <span id="footerTime"></span>
+    </footer>
+  </div>
+
+  <script>
+    // ─── State ──────────────────────────────────────────────────────────────
+    const state = {
+      pouScore: 0,
+      pendingRequests: 0,
+      cntMint: 0,
+      cntBirth: 0,
+      cntReject: 0,
+      totalMinted: BigInt(0),
+      autoScroll: true,
+    };
+
+    // ─── WebSocket ──────────────────────────────────────────────────────────
+    let ws = null;
+    let reconnectTimer = null;
+    let reconnectDelay = 2000;
+
+    function wsUrl() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${location.host}/api/ws`;
+    }
+
+    function setWsState(state) {
+      const dot = document.getElementById('wsDot');
+      const label = document.getElementById('wsStatus');
+      dot.className = 'ws-dot ' + state;
+      const labels = { connected: 'LIVE', connecting: 'CONNECTING…', error: 'OFFLINE' };
+      label.textContent = labels[state] ?? state.toUpperCase();
+    }
+
+    function connect() {
+      setWsState('connecting');
+      logLocal('→ Connecting to MetaCoreX EventBus…');
+
+      ws = new WebSocket(wsUrl());
+
+      ws.addEventListener('open', () => {
+        setWsState('connected');
+        reconnectDelay = 2000;
+        logLocal('◈ Connected to /api/ws — EventBus active');
+      });
+
+      ws.addEventListener('message', (evt) => {
+        try {
+          const event = JSON.parse(evt.data);
+          handleEvent(event);
+        } catch (e) {
+          logLocal('⚠ Parse error: ' + evt.data);
+        }
+      });
+
+      ws.addEventListener('close', () => {
+        setWsState('error');
+        logLocal(`✕ Connection lost — retrying in ${reconnectDelay / 1000}s…`);
+        reconnectTimer = setTimeout(() => {
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 15000);
+          connect();
+        }, reconnectDelay);
+      });
+
+      ws.addEventListener('error', () => {
+        setWsState('error');
+      });
+    }
+
+    // ─── Event handling ─────────────────────────────────────────────────────
+    function handleEvent(event) {
+      const { type, data, timestamp } = event;
+
+      switch (type) {
+        case 'MintRequested':
+          state.cntMint++;
+          state.pendingRequests++;
+          document.getElementById('cntMint').textContent = state.cntMint;
+          document.getElementById('pendingReqs').textContent = state.pendingRequests;
+          break;
+
+        case 'TokenBirthed':
+          state.cntBirth++;
+          if (state.pendingRequests > 0) state.pendingRequests--;
+          document.getElementById('cntBirth').textContent = state.cntBirth;
+          document.getElementById('pendingReqs').textContent = state.pendingRequests;
+          if (data.rewardAmount) {
+            state.totalMinted += BigInt(data.rewardAmount);
+            document.getElementById('totalMinted').textContent = formatTokens(state.totalMinted);
+            document.getElementById('tokenBalance').textContent = formatTokens(state.totalMinted);
+          }
+          // Increase PoU
+          state.pouScore = Math.min(100, state.pouScore + 12);
+          updatePou();
+          break;
+
+        case 'ProofRejected':
+          state.cntReject++;
+          if (state.pendingRequests > 0) state.pendingRequests--;
+          document.getElementById('cntReject').textContent = state.cntReject;
+          document.getElementById('pendingReqs').textContent = state.pendingRequests;
+          state.pouScore = Math.max(0, state.pouScore - 5);
+          updatePou();
+          break;
+
+        case 'AgentStatusChanged':
+          if (data.status) updateAgentStatus(data.status);
+          break;
+      }
+
+      appendLog(type, data, timestamp);
+    }
+
+    function updatePou() {
+      document.getElementById('pouScore').textContent = state.pouScore;
+      document.getElementById('pouPct').textContent = state.pouScore + '%';
+      document.getElementById('pouBar').style.width = state.pouScore + '%';
+    }
+
+    function updateAgentStatus(status) {
+      const el = document.getElementById('agentStatus');
+      const map = {
+        active:  { cls: 'good',  dot: 'active',  label: 'ACTIVE' },
+        idle:    { cls: 'warn',  dot: 'idle',    label: 'IDLE' },
+        offline: { cls: 'error', dot: 'offline', label: 'OFFLINE' },
+      };
+      const s = map[status] ?? map.idle;
+      el.className = 'stat-val ' + s.cls;
+      el.innerHTML = `<span class="status-dot ${s.dot}"></span>${s.label}`;
+    }
+
+    // ─── Terminal rendering ──────────────────────────────────────────────────
+    function formatTs(ts) {
+      return new Date(ts).toLocaleTimeString('en-US', { hour12: false });
+    }
+
+    function formatTokens(wei) {
+      const val = Number(wei) / 1e18;
+      return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    }
+
+    function formatData(data) {
+      return JSON.stringify(data)
+        .replace(/"/g, '')
+        .replace(/\{|\}/g, '')
+        .replace(/,/g, ' ·');
+    }
+
+    function appendLog(type, data, timestamp) {
+      const term = document.getElementById('terminal');
+      const empty = document.getElementById('termEmpty');
+      if (empty) empty.remove();
+
+      const entry = document.createElement('div');
+      entry.className = 'log-entry ' + (type || 'LOCAL');
+      entry.innerHTML = `
+        <span class="log-time">${formatTs(timestamp || Date.now())}</span>
+        <span class="log-type">${type || 'SYS'}</span>
+        <span class="log-data">${formatData(data || {})}</span>
+      `;
+      term.appendChild(entry);
+
+      if (state.autoScroll) {
+        term.scrollTop = term.scrollHeight;
+      }
+    }
+
+    function logLocal(msg) {
+      appendLog('LOCAL', { message: msg }, Date.now());
+    }
+
+    // ─── Actions ─────────────────────────────────────────────────────────────
+    async function runDemo() {
+      logLocal('→ Starting demo sequence…');
+      try {
+        const r = await fetch('/api/events/demo');
+        const j = await r.json();
+        logLocal('◈ ' + j.message);
+      } catch (e) {
+        logLocal('✕ Demo request failed: ' + e.message);
+      }
+    }
+
+    async function emitEvent(type) {
+      const payloads = {
+        MintRequested: { requestId: randomHex(64), to: randomAddr(), amount: '1000000000000000000000', proof: 'Manual test event' },
+        TokenBirthed:  { agent: randomAddr(), totalAmount: '1000000000000000000000', rewardAmount: '990000000000000000000', feeAmount: '10000000000000000000' },
+        ProofRejected: { requestId: randomHex(64), reason: 'Manual rejection test' },
+      };
+      try {
+        await fetch('/api/events/emit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, data: payloads[type] || {} }),
+        });
+      } catch (e) {
+        logLocal('✕ Emit failed: ' + e.message);
+      }
+    }
+
+    function clearLog() {
+      const term = document.getElementById('terminal');
+      term.innerHTML = '<div class="term-empty" id="termEmpty">[ log cleared ]</div>';
+    }
+
+    function toggleAutoScroll() {
+      state.autoScroll = !state.autoScroll;
+      document.getElementById('scrollToggle').textContent =
+        'AUTO-SCROLL: ' + (state.autoScroll ? 'ON' : 'OFF');
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+    function randomHex(len) {
+      return '0x' + Array.from({ length: len }, () =>
+        Math.floor(Math.random() * 16).toString(16)).join('');
+    }
+    function randomAddr() {
+      return '0x' + Array.from({ length: 40 }, () =>
+        Math.floor(Math.random() * 16).toString(16)).join('');
+    }
+
+    // ─── Footer clock ────────────────────────────────────────────────────────
+    function tickClock() {
+      document.getElementById('footerTime').textContent =
+        new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    }
+    tickClock();
+    setInterval(tickClock, 1000);
+
+    // ─── Boot ─────────────────────────────────────────────────────────────────
+    connect();
+  </script>
+</body>
+</html>
