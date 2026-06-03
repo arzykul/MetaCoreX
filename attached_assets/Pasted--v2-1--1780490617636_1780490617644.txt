@@ -1,3 +1,7 @@
+Давай сделаем это, но сначала обновим сам контракт токена до нашей финальной архитектуры v2.1 (с интеграцией Chainlink Functions и механизмом birthToken). 
+
+Пожалуйста, замени содержимое файла contracts/ARZYG_ERC20_AI.sol на этот код:
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
@@ -82,11 +86,7 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
         emit ReserveChanged(old, newReserve);
     }
 
-    function requestUsefulness(
-        address user,
-        string memory prompt,
-        uint256 amountExpected
-    ) public onlyOwner returns (bytes32 requestId) {
+    function requestUsefulness(address user, string memory prompt, uint256 amountExpected) public onlyOwner returns (bytes32 requestId) {
         string memory sourceCode = string(abi.encodePacked(
             "const res = await Functions.makeHttpRequest({ url: `https://api.arzy.ai/eval?addr=", 
             toAsciiString(user), 
@@ -161,3 +161,7 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
         else return bytes1(uint8(b) + 0x57);
     }
 }
+
+После этого создай базовую структуру для MetaCoreX OS:
+1. Папку /os/ и файл /os/EventBus.js (модуль для связи в реальном времени).
+2. Напиши Hardhat тесты для проверки контракта (деплой, вызов requestUsefulness и симуляция handleOracleFulfillment с вызовом функции birthToken). Попробуй скомпилировать всё вместе.
