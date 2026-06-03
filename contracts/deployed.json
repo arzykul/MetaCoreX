@@ -1,18 +1,19 @@
 {
-  "network": "localhost",
-  "chainId": 31337,
-  "timestamp": "2026-06-03T13:14:42.442Z",
-  "rpcUrl": "http://127.0.0.1:8545",
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": "2026-06-03T18:15:12.905Z",
+  "rpcUrl": "https://eth-sepolia.g.alchemy.com/v2/bAhZOHko05cywpKw5gI6r",
   "contracts": {
     "ARZYG_ERC20_AI": {
-      "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-      "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-      "reserve": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "address": "0x15D72D1656cA5A63207AcD278fC2501d8cc64f56",
+      "deployer": "0x8b7C9bB9794e849a64242CEd0B7fe4604cB4A0D6",
+      "reserve": "0x8b7C9bB9794e849a64242CEd0B7fe4604cB4A0D6",
+      "chainlinkRouter": "0xb83E47C2bC239B3bf370bc41e1459A34b41238D0",
+      "donId": "fun-ethereum-sepolia-1",
+      "subscriptionId": "0",
+      "txHash": "0xe582e86ef179e9fadd0aa5df9ed00bbbb4c54759c7743fe5cd291c14b524c227",
+      "etherscan": "https://sepolia.etherscan.io/address/0x15D72D1656cA5A63207AcD278fC2501d8cc64f56",
       "abiPath": "contracts/artifacts/contracts/ARZYG_ERC20_AI.sol/ARZYG_ERC20_AI.json"
-    },
-    "MockFunctionsRouter": {
-      "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-      "abiPath": "contracts/artifacts/contracts/mocks/MockFunctionsRouter.sol/MockFunctionsRouter.json"
     }
   }
 }
