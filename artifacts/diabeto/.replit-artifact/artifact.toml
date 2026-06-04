@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/diabeto/"
+title = "DiabeCare — Агент диабета"
+version = "1.0.0"
+id = "artifacts/diabeto"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/diabeto/" ]
+localPort = 20515
+
+[services.development]
+run = "pnpm --filter @workspace/diabeto run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/diabeto", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/diabeto", "run", "serve" ]
+
+[services.env]
+PORT = "20515"
+BASE_PATH = "/diabeto/"
