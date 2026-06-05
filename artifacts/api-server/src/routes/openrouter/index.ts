@@ -18,7 +18,13 @@ const openrouter = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY ?? "",
 });
 
-const MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+const MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "meta-llama/llama-3.1-8b-instruct:free",
+  "mistralai/mistral-7b-instruct:free",
+];
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -258,7 +264,7 @@ async function agenticLoop(
 
   while (iterations++ < MAX_ITERATIONS) {
     const completion = await openrouter.chat.completions.create({
-      model: MODEL,
+      model: MODELS[0],
       max_tokens: 8192,
       messages: chatMessages,
       tools,
@@ -291,7 +297,7 @@ async function agenticLoop(
     if (finalContent) {
       // Stream final answer word-by-word via another streaming call
       const stream = await openrouter.chat.completions.create({
-        model: MODEL,
+        model: MODELS[0],
         max_tokens: 8192,
         messages: chatMessages.concat([{ role: "user", content: "" }]).slice(0, -1).concat([
           { role: "assistant", content: finalContent },
@@ -314,6 +320,75 @@ async function agenticLoop(
 
 // ─── Real streaming agentic loop ──────────────────────────────────────────────
 
+async function callWithFallback(
+  params: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">,
+  write?: (data: string) => void,
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  for (let modelIdx = 0; modelIdx < MODELS.length; modelIdx++) {
+    const model = MODELS[modelIdx];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await openrouter.chat.completions.create({ ...params, model, stream: false });
+      } catch (err: unknown) {
+        const status = (err as { status?: number }).status;
+        const retryAfter = (err as { error?: { metadata?: { retry_after_seconds?: number } } })
+          .error?.metadata?.retry_after_seconds;
+        if (status === 429) {
+          const waitMs = retryAfter ? retryAfter * 1000 : 15000;
+          if (attempt === 0) {
+            if (write) write(`data: ${JSON.stringify({ status: `⏳ Модель перегружена, жду ${Math.ceil(waitMs / 1000)} сек…` })}\n\n`);
+            await sleep(Math.min(waitMs, 35000));
+            continue;
+          }
+          // retry exhausted for this model, try next
+          if (write && modelIdx < MODELS.length - 1)
+            write(`data: ${JSON.stringify({ status: "🔄 Переключаюсь на резервную модель…" })}\n\n`);
+          break;
+        }
+        throw err;
+      }
+    }
+  }
+  throw new Error("All models rate-limited");
+}
+
+async function callStreamWithFallback(
+  params: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming, "model">,
+  write: (data: string) => void,
+): Promise<string> {
+  for (let modelIdx = 0; modelIdx < MODELS.length; modelIdx++) {
+    const model = MODELS[modelIdx];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const stream = await openrouter.chat.completions.create({ ...params, model, stream: true });
+        let full = "";
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content;
+          if (content) { full += content; write(`data: ${JSON.stringify({ content })}\n\n`); }
+        }
+        return full;
+      } catch (err: unknown) {
+        const status = (err as { status?: number }).status;
+        const retryAfter = (err as { error?: { metadata?: { retry_after_seconds?: number } } })
+          .error?.metadata?.retry_after_seconds;
+        if (status === 429) {
+          const waitMs = retryAfter ? retryAfter * 1000 : 15000;
+          if (attempt === 0) {
+            write(`data: ${JSON.stringify({ status: `⏳ Модель перегружена, жду ${Math.ceil(waitMs / 1000)} сек…` })}\n\n`);
+            await sleep(Math.min(waitMs, 35000));
+            continue;
+          }
+          if (modelIdx < MODELS.length - 1)
+            write(`data: ${JSON.stringify({ status: "🔄 Переключаюсь на резервную модель…" })}\n\n`);
+          break;
+        }
+        throw err;
+      }
+    }
+  }
+  throw new Error("All models rate-limited");
+}
+
 async function agenticLoopStreaming(
   chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
   onTool: (tool: string) => void,
@@ -325,14 +400,13 @@ async function agenticLoopStreaming(
 
   while (iterations++ < MAX_ITERATIONS) {
     // First check if tools are needed (non-streaming)
-    const check = await openrouter.chat.completions.create({
-      model: MODEL,
+    const check = await callWithFallback({
       max_tokens: 8192,
       messages: chatMessages,
       tools,
       tool_choice: "auto",
       stream: false,
-    });
+    }, write);
 
     const choice = check.choices[0];
     if (!choice) break;
@@ -353,20 +427,11 @@ async function agenticLoopStreaming(
     }
 
     // No more tools → stream the final response
-    const stream = await openrouter.chat.completions.create({
-      model: MODEL,
+    fullResponse = await callStreamWithFallback({
       max_tokens: 8192,
       messages: chatMessages,
       stream: true,
-    });
-
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        fullResponse += content;
-        write(`data: ${JSON.stringify({ content })}\n\n`);
-      }
-    }
+    }, write);
     break;
   }
 
