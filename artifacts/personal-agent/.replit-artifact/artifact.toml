@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/personal-agent/"
+title = "PersonalAI — Персональный помощник"
+version = "1.0.0"
+id = "artifacts/personal-agent"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/personal-agent/" ]
+localPort = 25934
+
+[services.development]
+run = "pnpm --filter @workspace/personal-agent run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/personal-agent", "run", "build" ]
+publicDir = "artifacts/personal-agent/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25934"
+BASE_PATH = "/personal-agent/"
