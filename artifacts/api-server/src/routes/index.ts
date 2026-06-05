@@ -7,6 +7,7 @@ import notesRouter from "./notes.js";
 import remindersRouter from "./reminders.js";
 import chatRouter from "./chat.js";
 import statsRouter from "./stats.js";
+import openrouterRouter from "./openrouter/index.js";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(notesRouter);
 router.use(remindersRouter);
 router.use(chatRouter);
 router.use(statsRouter);
+router.use(openrouterRouter);
 
 export default router;

@@ -289,6 +289,83 @@ export const DeleteChatMessageParams = zod.object({
 
 
 /**
+ * @summary List all conversations
+ */
+export const ListOpenrouterConversationsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListOpenrouterConversationsResponse = zod.array(ListOpenrouterConversationsResponseItem)
+
+
+/**
+ * @summary Create a new conversation
+ */
+export const CreateOpenrouterConversationBody = zod.object({
+  "title": zod.string()
+})
+
+
+/**
+ * @summary Get conversation with messages
+ */
+export const GetOpenrouterConversationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetOpenrouterConversationResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "role": zod.string(),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Delete a conversation
+ */
+export const DeleteOpenrouterConversationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary List messages in a conversation
+ */
+export const ListOpenrouterMessagesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListOpenrouterMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "role": zod.string(),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListOpenrouterMessagesResponse = zod.array(ListOpenrouterMessagesResponseItem)
+
+
+/**
+ * @summary Send a message and receive an AI response (SSE stream)
+ */
+export const SendOpenrouterMessageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendOpenrouterMessageBody = zod.object({
+  "content": zod.string()
+})
+
+
+/**
  * @summary Get dashboard summary stats
  */
 export const GetDashboardStatsResponse = zod.object({

@@ -7,6 +7,9 @@
       "path": "./lib/db"
     },
     {
+      "path": "./lib/integrations-openrouter-ai"
+    },
+    {
       "path": "./lib/api-client-react"
     },
     {
