@@ -42,8 +42,7 @@ export function useReminderNotifications() {
   useEffect(() => {
     const check = async () => {
       try {
-        const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-        const res = await fetch(`${base}/api/openrouter/reminders/due`);
+        const res = await fetch(`/api/openrouter/reminders/due`);
         if (!res.ok) return;
         const due = await res.json() as { id: number; title: string }[];
         if (due.length === 0) return;

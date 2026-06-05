@@ -254,8 +254,7 @@ export default function ChatPage() {
     abortRef.current = controller;
 
     try {
-      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-      const res = await fetch(`${base}/api/openrouter/conversations/${convId}/messages`, {
+      const res = await fetch(`/api/openrouter/conversations/${convId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
