@@ -58,8 +58,3 @@ externalPort = 3001
 [[ports]]
 localPort = 25934
 externalPort = 3002
-
-[userenv]
-
-[userenv.shared]
-GROQ_API_KEY = "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"
