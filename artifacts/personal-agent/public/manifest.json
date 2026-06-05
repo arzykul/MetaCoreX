@@ -1,0 +1,22 @@
+{
+  "name": "PersonalAI — Персональный помощник",
+  "short_name": "PersonalAI",
+  "description": "Автономный AI-помощник с памятью, задачами и напоминаниями",
+  "start_url": "/personal-agent/",
+  "scope": "/personal-agent/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f0eb",
+  "theme_color": "#4a7c59",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "/personal-agent/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": []
+}
