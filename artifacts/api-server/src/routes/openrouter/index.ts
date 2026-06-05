@@ -1,7 +1,10 @@
 import { Router, type IRouter } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, lte, and } from "drizzle-orm";
 import OpenAI from "openai";
-import { db, conversations, messages, tasksTable, notesTable, remindersTable } from "@workspace/db";
+import {
+  db, conversations, messages,
+  tasksTable, notesTable, remindersTable, agentMemories,
+} from "@workspace/db";
 import {
   CreateOpenrouterConversationBody,
   SendOpenrouterMessageBody,
@@ -17,19 +20,80 @@ const openrouter = new OpenAI({
 
 const MODEL = "meta-llama/llama-3.3-70b-instruct:free";
 
-const SYSTEM_PROMPT = `Ты — PersonalAI, умный персональный помощник. Ты помогаешь пользователю управлять задачами, заметками и напоминаниями.
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-У тебя есть следующие инструменты:
-- create_task: создать задачу
-- create_note: создать заметку
-- create_reminder: создать напоминание
-- list_tasks: показать список задач
-- list_notes: показать список заметок
-- list_reminders: показать список напоминаний
+async function loadMemories(): Promise<string> {
+  const mems = await db.select().from(agentMemories).orderBy(agentMemories.updatedAt);
+  if (mems.length === 0) return "";
+  return "\n\nЧто ты знаешь о пользователе (долгосрочная память):\n" +
+    mems.map(m => `- ${m.key}: ${m.value}`).join("\n");
+}
 
-Когда пользователь просит что-то создать или найти — используй инструменты. Отвечай на русском языке. Будь кратким и полезным.`;
+async function webSearch(query: string): Promise<string> {
+  try {
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const data = await res.json() as {
+      AbstractText?: string;
+      AbstractURL?: string;
+      RelatedTopics?: { Text?: string; FirstURL?: string }[];
+    };
+
+    const parts: string[] = [];
+    if (data.AbstractText) parts.push(data.AbstractText);
+    if (data.RelatedTopics?.length) {
+      const topics = data.RelatedTopics
+        .filter(t => t.Text)
+        .slice(0, 4)
+        .map(t => `• ${t.Text}`);
+      if (topics.length) parts.push(topics.join("\n"));
+    }
+    return parts.length ? parts.join("\n\n") : "Результатов не найдено. Попробуйте переформулировать запрос.";
+  } catch {
+    return "Поиск недоступен. Попробуйте позже.";
+  }
+}
+
+// ─── Tools definition ─────────────────────────────────────────────────────────
 
 const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "remember_fact",
+      description: "Запомнить важный факт о пользователе для будущих разговоров (имя, предпочтения, привычки, цели)",
+      parameters: {
+        type: "object",
+        properties: {
+          key: { type: "string", description: "Короткий ключ факта, например 'имя', 'город', 'работа'" },
+          value: { type: "string", description: "Значение факта" },
+        },
+        required: ["key", "value"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "recall_facts",
+      description: "Вспомнить всё что известно о пользователе из долгосрочной памяти",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description: "Поиск информации в интернете через DuckDuckGo",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Поисковый запрос" },
+        },
+        required: ["query"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -38,10 +102,10 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: "object",
         properties: {
-          title: { type: "string", description: "Название задачи" },
-          description: { type: "string", description: "Описание задачи (необязательно)" },
-          priority: { type: "string", enum: ["low", "medium", "high"], description: "Приоритет задачи" },
-          dueDate: { type: "string", description: "Дедлайн в формате ISO (необязательно)" },
+          title: { type: "string" },
+          description: { type: "string" },
+          priority: { type: "string", enum: ["low", "medium", "high"] },
+          dueDate: { type: "string", description: "ISO дата дедлайна (необязательно)" },
         },
         required: ["title"],
       },
@@ -51,12 +115,12 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "create_note",
-      description: "Создать новую заметку",
+      description: "Создать заметку",
       parameters: {
         type: "object",
         properties: {
-          title: { type: "string", description: "Заголовок заметки" },
-          content: { type: "string", description: "Содержимое заметки" },
+          title: { type: "string" },
+          content: { type: "string" },
         },
         required: ["title"],
       },
@@ -70,8 +134,8 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: "object",
         properties: {
-          title: { type: "string", description: "Текст напоминания" },
-          remindAt: { type: "string", description: "Дата и время напоминания в формате ISO" },
+          title: { type: "string" },
+          remindAt: { type: "string", description: "ISO дата и время" },
         },
         required: ["title", "remindAt"],
       },
@@ -81,7 +145,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "list_tasks",
-      description: "Получить список задач пользователя",
+      description: "Получить список задач",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -89,7 +153,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "list_notes",
-      description: "Получить список заметок пользователя",
+      description: "Получить список заметок",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -97,14 +161,35 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "list_reminders",
-      description: "Получить список напоминаний пользователя",
+      description: "Получить список напоминаний",
       parameters: { type: "object", properties: {} },
     },
   },
 ];
 
+// ─── Tool executor ────────────────────────────────────────────────────────────
+
 async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
   try {
+    if (name === "remember_fact") {
+      const key = args.key as string;
+      const value = args.value as string;
+      await db.insert(agentMemories)
+        .values({ key, value })
+        .onConflictDoUpdate({ target: agentMemories.key, set: { value, updatedAt: new Date() } });
+      return `✅ Запомнил: ${key} = ${value}`;
+    }
+
+    if (name === "recall_facts") {
+      const mems = await db.select().from(agentMemories);
+      if (mems.length === 0) return "Памяти пока нет.";
+      return "Что я знаю о тебе:\n" + mems.map(m => `- ${m.key}: ${m.value}`).join("\n");
+    }
+
+    if (name === "web_search") {
+      return await webSearch(args.query as string);
+    }
+
     if (name === "create_task") {
       const [task] = await db.insert(tasksTable).values({
         title: args.title as string,
@@ -113,7 +198,7 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
         dueDate: args.dueDate ? (args.dueDate as string) : null,
         status: "pending",
       }).returning();
-      return `✅ Задача создана: "${task.title}" (приоритет: ${task.priority})`;
+      return `✅ Задача создана: "${task.title}" (${task.priority})`;
     }
 
     if (name === "create_note") {
@@ -131,52 +216,177 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
         remindAt: args.remindAt as string,
         done: false,
       }).returning();
-      return `🔔 Напоминание создано: "${reminder.title}" на ${new Date(reminder.remindAt).toLocaleString("ru-RU")}`;
+      return `🔔 Напоминание: "${reminder.title}" — ${new Date(reminder.remindAt).toLocaleString("ru-RU")}`;
     }
 
     if (name === "list_tasks") {
-      const tasks = await db.select().from(tasksTable).orderBy(desc(tasksTable.createdAt)).limit(10);
-      if (tasks.length === 0) return "Задач пока нет.";
+      const tasks = await db.select().from(tasksTable).orderBy(desc(tasksTable.createdAt)).limit(15);
+      if (!tasks.length) return "Задач нет.";
       return "Задачи:\n" + tasks.map(t => `- [${t.status}] ${t.title} (${t.priority})`).join("\n");
     }
 
     if (name === "list_notes") {
-      const notes = await db.select().from(notesTable).orderBy(desc(notesTable.createdAt)).limit(10);
-      if (notes.length === 0) return "Заметок пока нет.";
+      const notes = await db.select().from(notesTable).orderBy(desc(notesTable.createdAt)).limit(15);
+      if (!notes.length) return "Заметок нет.";
       return "Заметки:\n" + notes.map(n => `- ${n.title}`).join("\n");
     }
 
     if (name === "list_reminders") {
-      const reminders = await db.select().from(remindersTable).orderBy(desc(remindersTable.createdAt)).limit(10);
-      if (reminders.length === 0) return "Напоминаний пока нет.";
-      return "Напоминания:\n" + reminders.map(r => `- [${r.done ? "✓" : "●"}] ${r.title} — ${new Date(r.remindAt).toLocaleString("ru-RU")}`).join("\n");
+      const reminders = await db.select().from(remindersTable).orderBy(remindersTable.remindAt).limit(15);
+      if (!reminders.length) return "Напоминаний нет.";
+      return "Напоминания:\n" + reminders.map(r =>
+        `- [${r.done ? "✓" : "⏰"}] ${r.title} — ${new Date(r.remindAt).toLocaleString("ru-RU")}`
+      ).join("\n");
     }
 
     return `Неизвестный инструмент: ${name}`;
   } catch (err) {
-    logger.error({ err, tool: name }, "Tool execution error");
-    return `Ошибка при выполнении инструмента ${name}`;
+    logger.error({ err, tool: name }, "Tool error");
+    return `Ошибка инструмента: ${name}`;
   }
 }
 
-// GET /openrouter/conversations
+// ─── Agentic loop ─────────────────────────────────────────────────────────────
+
+async function agenticLoop(
+  chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  onTool: (tool: string) => void,
+  onChunk: (text: string) => void,
+): Promise<string> {
+  const MAX_ITERATIONS = 6;
+  let iterations = 0;
+
+  while (iterations++ < MAX_ITERATIONS) {
+    const completion = await openrouter.chat.completions.create({
+      model: MODEL,
+      max_tokens: 8192,
+      messages: chatMessages,
+      tools,
+      tool_choice: "auto",
+      stream: false,
+    });
+
+    const choice = completion.choices[0];
+    if (!choice) break;
+
+    const msg = choice.message;
+
+    // Tool calls → execute and continue
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+      chatMessages.push(msg);
+      for (const toolCall of msg.tool_calls) {
+        const tc = toolCall as { id: string; function: { name: string; arguments: string } };
+        let toolArgs: Record<string, unknown> = {};
+        try { toolArgs = JSON.parse(tc.function.arguments); } catch { /* empty */ }
+
+        onTool(tc.function.name);
+        const result = await executeTool(tc.function.name, toolArgs);
+        chatMessages.push({ role: "tool", tool_call_id: tc.id, content: result });
+      }
+      continue;
+    }
+
+    // Final text → stream it
+    const finalContent = msg.content ?? "";
+    if (finalContent) {
+      // Stream final answer word-by-word via another streaming call
+      const stream = await openrouter.chat.completions.create({
+        model: MODEL,
+        max_tokens: 8192,
+        messages: chatMessages.concat([{ role: "user", content: "" }]).slice(0, -1).concat([
+          { role: "assistant", content: finalContent },
+        ]),
+        stream: false, // Already have content, just emit it
+      });
+      void stream; // not used
+      // Emit the content we already have, chunk by chunk (simulate streaming)
+      const words = finalContent.split(" ");
+      for (const word of words) {
+        onChunk(word + " ");
+        await new Promise(r => setTimeout(r, 0)); // yield to event loop
+      }
+      return finalContent;
+    }
+    break;
+  }
+  return "";
+}
+
+// ─── Real streaming agentic loop ──────────────────────────────────────────────
+
+async function agenticLoopStreaming(
+  chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  onTool: (tool: string) => void,
+  write: (data: string) => void,
+): Promise<string> {
+  const MAX_ITERATIONS = 6;
+  let iterations = 0;
+  let fullResponse = "";
+
+  while (iterations++ < MAX_ITERATIONS) {
+    // First check if tools are needed (non-streaming)
+    const check = await openrouter.chat.completions.create({
+      model: MODEL,
+      max_tokens: 8192,
+      messages: chatMessages,
+      tools,
+      tool_choice: "auto",
+      stream: false,
+    });
+
+    const choice = check.choices[0];
+    if (!choice) break;
+    const msg = choice.message;
+
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+      chatMessages.push(msg);
+      for (const toolCall of msg.tool_calls) {
+        const tc = toolCall as { id: string; function: { name: string; arguments: string } };
+        let toolArgs: Record<string, unknown> = {};
+        try { toolArgs = JSON.parse(tc.function.arguments); } catch { /* empty */ }
+        onTool(tc.function.name);
+        write(`data: ${JSON.stringify({ tool: tc.function.name })}\n\n`);
+        const result = await executeTool(tc.function.name, toolArgs);
+        chatMessages.push({ role: "tool", tool_call_id: tc.id, content: result });
+      }
+      continue;
+    }
+
+    // No more tools → stream the final response
+    const stream = await openrouter.chat.completions.create({
+      model: MODEL,
+      max_tokens: 8192,
+      messages: chatMessages,
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        fullResponse += content;
+        write(`data: ${JSON.stringify({ content })}\n\n`);
+      }
+    }
+    break;
+  }
+
+  return fullResponse;
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
 router.get("/openrouter/conversations", async (_req, res): Promise<void> => {
   const convs = await db.select().from(conversations).orderBy(desc(conversations.createdAt));
   res.json(convs);
 });
 
-// POST /openrouter/conversations
 router.post("/openrouter/conversations", async (req, res): Promise<void> => {
   const parsed = CreateOpenrouterConversationBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [conv] = await db.insert(conversations).values({ title: parsed.data.title }).returning();
   res.status(201).json(conv);
 });
 
-// GET /openrouter/conversations/:id
 router.get("/openrouter/conversations/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -186,7 +396,6 @@ router.get("/openrouter/conversations/:id", async (req, res): Promise<void> => {
   res.json({ ...conv, messages: msgs });
 });
 
-// DELETE /openrouter/conversations/:id
 router.delete("/openrouter/conversations/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -194,7 +403,6 @@ router.delete("/openrouter/conversations/:id", async (req, res): Promise<void> =
   res.sendStatus(204);
 });
 
-// GET /openrouter/conversations/:id/messages
 router.get("/openrouter/conversations/:id/messages", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -202,7 +410,6 @@ router.get("/openrouter/conversations/:id/messages", async (req, res): Promise<v
   res.json(msgs);
 });
 
-// POST /openrouter/conversations/:id/messages (SSE streaming with tool use)
 router.post("/openrouter/conversations/:id/messages", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -216,12 +423,29 @@ router.post("/openrouter/conversations/:id/messages", async (req, res): Promise<
   // Save user message
   await db.insert(messages).values({ conversationId: id, role: "user", content: parsed.data.content });
 
-  // Load history
+  // Load history + memories
   const history = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(messages.createdAt);
+  const memoryContext = await loadMemories();
 
-  // Build messages for LLM
+  const systemPrompt = `Ты — PersonalAI, умный автономный персональный помощник. Сегодня: ${new Date().toLocaleString("ru-RU")}.
+${memoryContext}
+
+Инструменты:
+- remember_fact: запомни важный факт о пользователе (имя, предпочтения, цели, привычки)
+- recall_facts: вспомни всё о пользователе
+- web_search: поиск в интернете через DuckDuckGo
+- create_task / list_tasks: задачи
+- create_note / list_notes: заметки  
+- create_reminder / list_reminders: напоминания
+
+Правила:
+- Если пользователь называет своё имя — немедленно запомни через remember_fact
+- Если вопрос требует актуальных данных — используй web_search
+- Всегда отвечай на русском языке
+- Будь кратким, дружелюбным и полезным`;
+
   const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     ...history.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
   ];
 
@@ -231,74 +455,12 @@ router.post("/openrouter/conversations/:id/messages", async (req, res): Promise<
   res.setHeader("Connection", "keep-alive");
 
   try {
-    let fullResponse = "";
-    let toolCallsDone = false;
+    const fullResponse = await agenticLoopStreaming(
+      chatMessages,
+      (tool) => logger.info({ tool }, "Agent tool call"),
+      (data) => res.write(data),
+    );
 
-    // Agentic loop: call LLM, execute tools if needed, then stream final response
-    while (!toolCallsDone) {
-      const completion = await openrouter.chat.completions.create({
-        model: MODEL,
-        max_tokens: 8192,
-        messages: chatMessages,
-        tools,
-        tool_choice: "auto",
-        stream: false,
-      });
-
-      const choice = completion.choices[0];
-      if (!choice) break;
-
-      const msg = choice.message;
-
-      // If model wants to call tools
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        chatMessages.push(msg);
-
-        for (const toolCall of msg.tool_calls) {
-          const tc = toolCall as { id: string; function: { name: string; arguments: string } };
-          const toolName = tc.function.name;
-          let toolArgs: Record<string, unknown> = {};
-          try { toolArgs = JSON.parse(tc.function.arguments); } catch { /* empty args */ }
-
-          // Notify client which tool is running
-          res.write(`data: ${JSON.stringify({ tool: toolName })}\n\n`);
-
-          const result = await executeTool(toolName, toolArgs);
-
-          chatMessages.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: result,
-          });
-        }
-        // Continue loop to get final answer
-        continue;
-      }
-
-      // No tool calls — stream the final answer
-      toolCallsDone = true;
-      const finalContent = msg.content ?? "";
-
-      // Stream the response word by word for smooth UX
-      const stream = await openrouter.chat.completions.create({
-        model: MODEL,
-        max_tokens: 8192,
-        messages: chatMessages,
-        stream: true,
-      });
-
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content;
-        if (content) {
-          fullResponse += content;
-          res.write(`data: ${JSON.stringify({ content })}\n\n`);
-        }
-      }
-
-      if (!fullResponse) fullResponse = finalContent;
-    }
-
-    // Save assistant response
     if (fullResponse) {
       await db.insert(messages).values({ conversationId: id, role: "assistant", content: fullResponse });
     }
@@ -306,10 +468,30 @@ router.post("/openrouter/conversations/:id/messages", async (req, res): Promise<
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (err) {
-    logger.error({ err }, "OpenRouter stream error");
+    logger.error({ err }, "OpenRouter agent error");
     res.write(`data: ${JSON.stringify({ error: "Ошибка AI. Попробуйте ещё раз." })}\n\n`);
     res.end();
   }
+});
+
+// ─── Reminder checker endpoint (called by frontend polling) ───────────────────
+
+router.get("/openrouter/reminders/due", async (_req, res): Promise<void> => {
+  const now = new Date();
+  const dueReminders = await db
+    .select()
+    .from(remindersTable)
+    .where(and(
+      lte(remindersTable.remindAt, now.toISOString()),
+      eq(remindersTable.done, false),
+    ));
+
+  // Mark as done
+  for (const r of dueReminders) {
+    await db.update(remindersTable).set({ done: true }).where(eq(remindersTable.id, r.id));
+  }
+
+  res.json(dueReminders);
 });
 
 export default router;

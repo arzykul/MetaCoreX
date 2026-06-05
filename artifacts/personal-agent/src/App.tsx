@@ -9,6 +9,7 @@ import ChatPage from "@/pages/chat";
 import TasksPage from "@/pages/tasks";
 import NotesPage from "@/pages/notes";
 import RemindersPage from "@/pages/reminders";
+import { useReminderNotifications } from "@/hooks/useReminderNotifications";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,6 +21,7 @@ const queryClient = new QueryClient({
 });
 
 function Router() {
+  useReminderNotifications();
   return (
     <AppLayout>
       <Switch>
