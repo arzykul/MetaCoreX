@@ -13,16 +13,23 @@ import { logger } from "../../lib/logger.js";
 
 const router: IRouter = Router();
 
+// Primary: Groq (fast, free). Fallback: OpenRouter
+const groq = new OpenAI({
+  baseURL: "https://api.groq.com/openai/v1",
+  apiKey: process.env.GROQ_API_KEY ?? "",
+});
+
 const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENROUTER_API_KEY ?? "",
 });
 
-const MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "mistralai/mistral-7b-instruct:free",
-  "google/gemma-3-27b-it:free",
-  "deepseek/deepseek-chat:free",
+type Provider = { client: OpenAI; model: string; name: string };
+
+const PROVIDERS: Provider[] = [
+  { client: groq, model: "llama-3.3-70b-versatile", name: "Groq/LLaMA-70B" },
+  { client: groq, model: "llama-3.1-8b-instant", name: "Groq/LLaMA-8B" },
+  { client: openrouter, model: "meta-llama/llama-3.3-70b-instruct:free", name: "OpenRouter/LLaMA-70B" },
 ];
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -264,8 +271,8 @@ async function agenticLoop(
   let iterations = 0;
 
   while (iterations++ < MAX_ITERATIONS) {
-    const completion = await openrouter.chat.completions.create({
-      model: MODELS[0],
+    const completion = await PROVIDERS[0].client.chat.completions.create({
+      model: PROVIDERS[0].model,
       max_tokens: 8192,
       messages: chatMessages,
       tools,
@@ -297,8 +304,8 @@ async function agenticLoop(
     const finalContent = msg.content ?? "";
     if (finalContent) {
       // Stream final answer word-by-word via another streaming call
-      const stream = await openrouter.chat.completions.create({
-        model: MODELS[0],
+      const stream = await PROVIDERS[0].client.chat.completions.create({
+        model: PROVIDERS[0].model,
         max_tokens: 8192,
         messages: chatMessages.concat([{ role: "user", content: "" }]).slice(0, -1).concat([
           { role: "assistant", content: finalContent },
@@ -321,7 +328,7 @@ async function agenticLoop(
 
 // ─── Real streaming agentic loop ──────────────────────────────────────────────
 
-function shouldTryNextModel(err: unknown): boolean {
+function isRetryable(err: unknown): boolean {
   const status = (err as { status?: number }).status;
   return status === 429 || status === 404 || status === 503 || status === 502;
 }
@@ -330,26 +337,22 @@ async function callWithFallback(
   params: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming, "model">,
   write?: (data: string) => void,
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
-  for (let modelIdx = 0; modelIdx < MODELS.length; modelIdx++) {
-    const model = MODELS[modelIdx];
+  for (let i = 0; i < PROVIDERS.length; i++) {
+    const { client, model, name } = PROVIDERS[i];
     try {
-      // On 429: wait briefly then retry once before switching
-      return await openrouter.chat.completions.create({ ...params, model, stream: false });
+      return await client.chat.completions.create({ ...params, model, stream: false });
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;
       if (status === 429) {
-        const retryAfter = (err as { error?: { metadata?: { retry_after_seconds?: number } } })
-          .error?.metadata?.retry_after_seconds ?? 10;
-        const waitMs = Math.min(retryAfter * 1000, 10000);
-        if (write) write(`data: ${JSON.stringify({ status: `⏳ Модель занята, жду ${Math.ceil(waitMs / 1000)} сек…` })}\n\n`);
+        const waitMs = Math.min(((err as { error?: { metadata?: { retry_after_seconds?: number } } })
+          .error?.metadata?.retry_after_seconds ?? 10) * 1000, 10000);
+        if (write) write(`data: ${JSON.stringify({ status: `⏳ ${name} занят, жду ${Math.ceil(waitMs / 1000)} сек…` })}\n\n`);
         await sleep(waitMs);
-        try {
-          return await openrouter.chat.completions.create({ ...params, model, stream: false });
-        } catch { /* fall through to next model */ }
+        try { return await client.chat.completions.create({ ...params, model, stream: false }); } catch { /* next */ }
       }
-      if (!shouldTryNextModel(err)) throw err;
-      if (modelIdx < MODELS.length - 1 && write)
-        write(`data: ${JSON.stringify({ status: "🔄 Переключаюсь на резервную модель…" })}\n\n`);
+      if (!isRetryable(err)) throw err;
+      if (i < PROVIDERS.length - 1 && write)
+        write(`data: ${JSON.stringify({ status: `🔄 Переключаюсь на ${PROVIDERS[i + 1].name}…` })}\n\n`);
     }
   }
   throw new Error("Все модели недоступны. Попробуйте позже.");
@@ -359,37 +362,31 @@ async function callStreamWithFallback(
   params: Omit<OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming, "model">,
   write: (data: string) => void,
 ): Promise<string> {
-  for (let modelIdx = 0; modelIdx < MODELS.length; modelIdx++) {
-    const model = MODELS[modelIdx];
-    try {
-      const stream = await openrouter.chat.completions.create({ ...params, model, stream: true });
+  for (let i = 0; i < PROVIDERS.length; i++) {
+    const { client, model, name } = PROVIDERS[i];
+    const tryStream = async () => {
+      const stream = await client.chat.completions.create({ ...params, model, stream: true });
       let full = "";
       for await (const chunk of stream) {
         const content = chunk.choices[0]?.delta?.content;
         if (content) { full += content; write(`data: ${JSON.stringify({ content })}\n\n`); }
       }
       return full;
+    };
+    try {
+      return await tryStream();
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;
       if (status === 429) {
-        const retryAfter = (err as { error?: { metadata?: { retry_after_seconds?: number } } })
-          .error?.metadata?.retry_after_seconds ?? 10;
-        const waitMs = Math.min(retryAfter * 1000, 10000);
-        write(`data: ${JSON.stringify({ status: `⏳ Модель занята, жду ${Math.ceil(waitMs / 1000)} сек…` })}\n\n`);
+        const waitMs = Math.min(((err as { error?: { metadata?: { retry_after_seconds?: number } } })
+          .error?.metadata?.retry_after_seconds ?? 10) * 1000, 10000);
+        write(`data: ${JSON.stringify({ status: `⏳ ${name} занят, жду ${Math.ceil(waitMs / 1000)} сек…` })}\n\n`);
         await sleep(waitMs);
-        try {
-          const stream2 = await openrouter.chat.completions.create({ ...params, model, stream: true });
-          let full = "";
-          for await (const chunk of stream2) {
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) { full += content; write(`data: ${JSON.stringify({ content })}\n\n`); }
-          }
-          return full;
-        } catch { /* fall through to next model */ }
+        try { return await tryStream(); } catch { /* next provider */ }
       }
-      if (!shouldTryNextModel(err)) throw err;
-      if (modelIdx < MODELS.length - 1)
-        write(`data: ${JSON.stringify({ status: "🔄 Переключаюсь на резервную модель…" })}\n\n`);
+      if (!isRetryable(err)) throw err;
+      if (i < PROVIDERS.length - 1)
+        write(`data: ${JSON.stringify({ status: `🔄 Переключаюсь на ${PROVIDERS[i + 1].name}…` })}\n\n`);
     }
   }
   throw new Error("Все модели недоступны. Попробуйте позже.");
