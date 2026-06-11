@@ -5,3 +5,4 @@ export * from "./chat_messages";
 export * from "./conversations";
 export * from "./messages";
 export * from "./agent_memories";
+export * from "./agent_tools";

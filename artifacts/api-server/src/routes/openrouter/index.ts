@@ -3,7 +3,7 @@ import { eq, desc, lte, and } from "drizzle-orm";
 import OpenAI from "openai";
 import {
   db, conversations, messages,
-  tasksTable, notesTable, remindersTable, agentMemories,
+  tasksTable, notesTable, remindersTable, agentMemories, agentTools,
 } from "@workspace/db";
 import {
   CreateOpenrouterConversationBody,
@@ -179,11 +179,42 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: { type: "object", properties: {} },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "define_tool",
+      description: "Создать новый персональный инструмент — когда стандартных инструментов не хватает для задачи. Агент обучается и расширяет свои способности.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Название инструмента в snake_case (без пробелов, только буквы и _)" },
+          description: { type: "string", description: "Краткое описание что делает инструмент" },
+          implementation_prompt: { type: "string", description: "Детальная инструкция как выполнять этот инструмент — что именно нужно делать с параметрами" },
+          parameters_description: { type: "string", description: "Описание параметров которые принимает инструмент" },
+        },
+        required: ["name", "description", "implementation_prompt"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_custom_tools",
+      description: "Посмотреть все инструменты которые ты сам создал",
+      parameters: { type: "object", properties: {} },
+    },
+  },
 ];
 
 // ─── Tool executor ────────────────────────────────────────────────────────────
 
-async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
+type CustomToolDef = { name: string; description: string; implementationPrompt: string };
+
+async function executeTool(
+  name: string,
+  args: Record<string, unknown>,
+  customToolDefs: CustomToolDef[] = [],
+): Promise<string> {
   try {
     if (name === "remember_fact") {
       const key = args.key as string;
@@ -251,6 +282,59 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       return "Напоминания:\n" + reminders.map(r =>
         `- [${r.done ? "✓" : "⏰"}] ${r.title} — ${new Date(r.remindAt).toLocaleString("ru-RU")}`
       ).join("\n");
+    }
+
+    if (name === "define_tool") {
+      const toolName = (args.name as string).replace(/\s+/g, "_").toLowerCase();
+      const description = args.description as string;
+      const implementationPrompt = args.implementation_prompt as string;
+      const parametersDescription = (args.parameters_description as string) ?? "";
+      await db.insert(agentTools).values({
+        name: toolName,
+        description,
+        implementationPrompt: parametersDescription
+          ? `${implementationPrompt}\n\nПараметры: ${parametersDescription}`
+          : implementationPrompt,
+        parametersSchema: {},
+      }).onConflictDoUpdate({
+        target: agentTools.name,
+        set: { description, implementationPrompt, updatedAt: new Date() },
+      });
+      return `🔧 Инструмент создан: "${toolName}" — ${description}`;
+    }
+
+    if (name === "list_custom_tools") {
+      const customs = await db.select().from(agentTools).orderBy(desc(agentTools.usageCount)).limit(20);
+      if (!customs.length) return "Пользовательских инструментов пока нет. Создай через define_tool.";
+      return "Твои инструменты:\n" + customs.map(t =>
+        `🔧 ${t.name} (×${t.usageCount}): ${t.description}`
+      ).join("\n");
+    }
+
+    // User-defined tool execution via sub-LLM
+    const customTool = customToolDefs.find(t => t.name === name);
+    if (customTool) {
+      const [existing] = await db.select({ usageCount: agentTools.usageCount })
+        .from(agentTools).where(eq(agentTools.name, name));
+      await db.update(agentTools)
+        .set({ usageCount: (existing?.usageCount ?? 0) + 1, updatedAt: new Date() })
+        .where(eq(agentTools.name, name));
+
+      const result = await callWithFallback({
+        max_tokens: 1000,
+        messages: [
+          {
+            role: "system",
+            content: `Ты — специализированный инструмент "${customTool.name}".\nЗадача: ${customTool.description}\nИнструкция: ${customTool.implementationPrompt}\nВыполни задачу и верни конкретный результат.`,
+          },
+          {
+            role: "user",
+            content: `Параметры: ${JSON.stringify(args)}`,
+          },
+        ],
+        stream: false,
+      });
+      return result.choices[0]?.message?.content ?? "Инструмент выполнен.";
     }
 
     return `Неизвестный инструмент: ${name}`;
@@ -396,17 +480,18 @@ async function agenticLoopStreaming(
   chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
   onTool: (tool: string) => void,
   write: (data: string) => void,
+  allTools: OpenAI.Chat.Completions.ChatCompletionTool[] = tools,
+  customToolDefs: CustomToolDef[] = [],
 ): Promise<string> {
   const MAX_ITERATIONS = 6;
   let iterations = 0;
   let fullResponse = "";
 
   while (iterations++ < MAX_ITERATIONS) {
-    // First check if tools are needed (non-streaming)
     const check = await callWithFallback({
       max_tokens: 8192,
       messages: chatMessages,
-      tools,
+      tools: allTools,
       tool_choice: "auto",
       stream: false,
     }, write);
@@ -423,13 +508,12 @@ async function agenticLoopStreaming(
         try { toolArgs = JSON.parse(tc.function.arguments); } catch { /* empty */ }
         onTool(tc.function.name);
         write(`data: ${JSON.stringify({ tool: tc.function.name })}\n\n`);
-        const result = await executeTool(tc.function.name, toolArgs);
+        const result = await executeTool(tc.function.name, toolArgs, customToolDefs);
         chatMessages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
     }
 
-    // No more tools → stream the final response
     fullResponse = await callStreamWithFallback({
       max_tokens: 8192,
       messages: chatMessages,
@@ -447,6 +531,8 @@ async function autonomousAgentLoop(
   goal: string,
   baseMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
   write: (data: string) => void,
+  allTools: OpenAI.Chat.Completions.ChatCompletionTool[] = tools,
+  customToolDefs: CustomToolDef[] = [],
 ): Promise<string> {
   const allParts: string[] = [];
 
@@ -496,6 +582,8 @@ async function autonomousAgentLoop(
       subtaskMessages,
       () => {},
       write,
+      allTools,
+      customToolDefs,
     );
     completedSummaries.push(subtaskResult.slice(0, 150));
     allParts.push(subtaskResult);
@@ -514,7 +602,7 @@ async function autonomousAgentLoop(
     ...rest,
   ];
 
-  const reflection = await agenticLoopStreaming(reflectMessages, () => {}, write);
+  const reflection = await agenticLoopStreaming(reflectMessages, () => {}, write, allTools, customToolDefs);
   allParts.push(reflection);
   write(`data: ${JSON.stringify({ autonomous_phase: "done" })}\n\n`);
 
@@ -571,24 +659,52 @@ router.post("/openrouter/conversations/:id/messages", async (req, res): Promise<
   // Save user message
   await db.insert(messages).values({ conversationId: id, role: "user", content: parsed.data.content });
 
-  // Load history + memories
-  const history = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(messages.createdAt);
-  const memoryContext = await loadMemories();
+  // Load history, memories, and custom tools in parallel
+  const [history, memoryContext, customToolRows] = await Promise.all([
+    db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(messages.createdAt),
+    loadMemories(),
+    db.select().from(agentTools).orderBy(desc(agentTools.usageCount)).limit(20),
+  ]);
+
+  const customToolDefs: CustomToolDef[] = customToolRows.map(t => ({
+    name: t.name,
+    description: t.description,
+    implementationPrompt: t.implementationPrompt,
+  }));
+
+  // Build dynamic tools = static + user-defined
+  const customToolSpecs: OpenAI.Chat.Completions.ChatCompletionTool[] = customToolRows.map(t => ({
+    type: "function" as const,
+    function: {
+      name: t.name,
+      description: `${t.description} [твой инструмент]`,
+      parameters: { type: "object" as const, properties: {} },
+    },
+  }));
+  const allTools = [...tools, ...customToolSpecs];
+
+  const customToolsContext = customToolRows.length
+    ? `\nТвои персональные инструменты (${customToolRows.length}):\n` +
+      customToolRows.map(t => `- ${t.name} (×${t.usageCount}): ${t.description}`).join("\n")
+    : "";
 
   const systemPrompt = `Ты — PersonalAI, умный автономный персональный помощник. Сегодня: ${new Date().toLocaleString("ru-RU")}.
 ${memoryContext}
 
-Инструменты:
-- remember_fact: запомни важный факт о пользователе (имя, предпочтения, цели, привычки)
-- recall_facts: вспомни всё о пользователе
-- web_search: поиск в интернете через DuckDuckGo
+Встроенные инструменты:
+- remember_fact / recall_facts: долгосрочная память
+- web_search: поиск в интернете
 - create_task / list_tasks: задачи
-- create_note / list_notes: заметки  
+- create_note / list_notes: заметки
 - create_reminder / list_reminders: напоминания
+- define_tool: создай НОВЫЙ инструмент когда нужной способности нет — агент обучается!
+- list_custom_tools: посмотреть свои инструменты
+${customToolsContext}
 
 Правила:
 - Если пользователь называет своё имя — немедленно запомни через remember_fact
 - Если вопрос требует актуальных данных — используй web_search
+- Если задача требует способности которой нет — создай инструмент через define_tool
 - Всегда отвечай на русском языке
 - Будь кратким, дружелюбным и полезным`;
 
@@ -610,11 +726,15 @@ ${memoryContext}
           parsed.data.content,
           chatMessages,
           (data) => res.write(data),
+          allTools,
+          customToolDefs,
         )
       : await agenticLoopStreaming(
           chatMessages,
           (tool) => logger.info({ tool }, "Agent tool call"),
           (data) => res.write(data),
+          allTools,
+          customToolDefs,
         );
 
     if (fullResponse) {

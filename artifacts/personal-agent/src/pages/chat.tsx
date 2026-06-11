@@ -44,6 +44,8 @@ const TOOL_LABELS: Record<string, { label: string; icon: React.ElementType }> = 
   remember_fact: { label: "Запоминаю...", icon: Brain },
   recall_facts: { label: "Вспоминаю...", icon: Brain },
   web_search: { label: "Ищу в интернете...", icon: Zap },
+  define_tool: { label: "Создаю новый инструмент...", icon: Zap },
+  list_custom_tools: { label: "Просматриваю инструменты...", icon: Zap },
 };
 
 function ToolIndicator({ tool }: { tool: string }) {
