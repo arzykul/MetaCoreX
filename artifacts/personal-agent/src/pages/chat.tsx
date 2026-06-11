@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Send, Plus, Trash2, Bot, User, MessageSquare,
   CheckSquare, StickyNote, Bell, ChevronLeft, Loader2,
+  Zap, Circle, CheckCircle2, Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +32,8 @@ type Conversation = {
   createdAt: string;
 };
 
+type AutonomousSubtaskEvent = { text: string; index: number; total: number };
+
 const TOOL_LABELS: Record<string, { label: string; icon: React.ElementType }> = {
   create_task: { label: "Создаю задачу...", icon: CheckSquare },
   create_note: { label: "Создаю заметку...", icon: StickyNote },
@@ -38,6 +41,9 @@ const TOOL_LABELS: Record<string, { label: string; icon: React.ElementType }> = 
   list_tasks: { label: "Получаю задачи...", icon: CheckSquare },
   list_notes: { label: "Получаю заметки...", icon: StickyNote },
   list_reminders: { label: "Получаю напоминания...", icon: Bell },
+  remember_fact: { label: "Запоминаю...", icon: Brain },
+  recall_facts: { label: "Вспоминаю...", icon: Brain },
+  web_search: { label: "Ищу в интернете...", icon: Zap },
 };
 
 function ToolIndicator({ tool }: { tool: string }) {
@@ -48,6 +54,52 @@ function ToolIndicator({ tool }: { tool: string }) {
       <Loader2 className="w-3 h-3 animate-spin" />
       <Icon className="w-3 h-3" />
       <span>{info.label}</span>
+    </div>
+  );
+}
+
+function PlanPanel({
+  plan,
+  currentIdx,
+  completed,
+  phase,
+}: {
+  plan: string[];
+  currentIdx: number;
+  completed: Set<number>;
+  phase: string | null;
+}) {
+  return (
+    <div className="mx-auto max-w-[80%] ml-10 mb-1 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+      <div className="flex items-center gap-2 mb-2.5 text-primary font-semibold text-xs uppercase tracking-wide">
+        <Zap className="w-3.5 h-3.5" />
+        <span>Автономный план</span>
+        {phase === "planning" && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
+      </div>
+      <div className="space-y-1.5">
+        {plan.map((task, i) => (
+          <div key={i} className={cn(
+            "flex items-start gap-2 transition-all",
+            currentIdx === i && "text-foreground font-medium",
+            completed.has(i) && "opacity-50",
+          )}>
+            {completed.has(i) ? (
+              <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+            ) : currentIdx === i ? (
+              <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0 mt-0.5" />
+            ) : (
+              <Circle className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5" />
+            )}
+            <span className={cn(completed.has(i) && "line-through")}>{task}</span>
+          </div>
+        ))}
+      </div>
+      {phase === "reflection" && (
+        <div className="mt-2.5 pt-2 border-t border-primary/10 text-xs text-muted-foreground flex items-center gap-1.5">
+          <Brain className="w-3 h-3" />
+          <span>Анализирую результаты и сохраняю навыки...</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -178,10 +230,17 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Autonomous mode state
+  const [autoMode, setAutoMode] = useState(false);
+  const [autonomousPlan, setAutonomousPlan] = useState<string[] | null>(null);
+  const [currentSubtaskIdx, setCurrentSubtaskIdx] = useState<number>(-1);
+  const [completedSubtasks, setCompletedSubtasks] = useState<Set<number>>(new Set());
+  const [autonomousPhase, setAutonomousPhase] = useState<string | null>(null);
+
   const { data: conversations = [] } = useListOpenrouterConversations();
   const { data: messages = [], isLoading: msgsLoading } = useListOpenrouterMessages(
     activeConvId ?? 0,
-    { query: { enabled: activeConvId !== null } }
+    { query: { queryKey: getListOpenrouterMessagesQueryKey(activeConvId ?? 0), enabled: activeConvId !== null } }
   );
   const createConversation = useCreateOpenrouterConversation();
   const deleteConversation = useDeleteOpenrouterConversation();
@@ -195,7 +254,14 @@ export default function ChatPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamContent, activeTool]);
+  }, [messages, streamContent, activeTool, autonomousPlan, currentSubtaskIdx]);
+
+  const resetAutonomousState = () => {
+    setAutonomousPlan(null);
+    setCurrentSubtaskIdx(-1);
+    setCompletedSubtasks(new Set());
+    setAutonomousPhase(null);
+  };
 
   const handleNewConversation = () => {
     createConversation.mutate(
@@ -228,7 +294,6 @@ export default function ChatPage() {
 
     let convId = activeConvId;
 
-    // Auto-create conversation if none selected
     if (convId === null) {
       const title = generateTitle(content);
       const conv = await new Promise<Conversation>((resolve) => {
@@ -246,8 +311,8 @@ export default function ChatPage() {
     setStreaming(true);
     setStreamContent("");
     setActiveTool(null);
+    resetAutonomousState();
 
-    // Optimistically show user message
     await queryClient.invalidateQueries({ queryKey: getListOpenrouterMessagesQueryKey(convId) });
 
     const controller = new AbortController();
@@ -257,7 +322,7 @@ export default function ChatPage() {
       const res = await fetch(`/api/openrouter/conversations/${convId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, autonomous: autoMode }),
         signal: controller.signal,
       });
 
@@ -277,18 +342,43 @@ export default function ChatPage() {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           try {
-            const data = JSON.parse(line.slice(6));
+            const data = JSON.parse(line.slice(6)) as {
+              tool?: string;
+              content?: string;
+              done?: boolean;
+              error?: string;
+              status?: string;
+              autonomous_phase?: string;
+              autonomous_plan?: string[];
+              autonomous_subtask?: AutonomousSubtaskEvent;
+              autonomous_subtask_done?: number;
+            };
+
             if (data.tool) {
               setActiveTool(data.tool);
-              setStreamContent("");
             } else if (data.content) {
               setActiveTool(null);
               setStreamContent((prev) => prev + data.content);
+            } else if (data.autonomous_plan) {
+              setAutonomousPlan(data.autonomous_plan);
+              setCurrentSubtaskIdx(-1);
+              setCompletedSubtasks(new Set());
+            } else if (data.autonomous_subtask) {
+              setCurrentSubtaskIdx(data.autonomous_subtask.index);
+              setStreamContent("");
+            } else if (data.autonomous_subtask_done !== undefined) {
+              setCompletedSubtasks((prev) => new Set([...prev, data.autonomous_subtask_done as number]));
+              setCurrentSubtaskIdx(-1);
+              setStreamContent("");
+            } else if (data.autonomous_phase) {
+              setAutonomousPhase(data.autonomous_phase);
+              if (data.autonomous_phase === "reflection") setStreamContent("");
             } else if (data.done) {
               setStreaming(false);
               setStreamContent("");
               setActiveTool(null);
               invalidateMessages();
+              setTimeout(resetAutonomousState, 2000);
             } else if (data.error) {
               setStreamContent(data.error);
             }
@@ -306,14 +396,20 @@ export default function ChatPage() {
   };
 
   const SUGGESTIONS = [
-    "Помоги организовать день",
+    "Помоги организовать мой день",
     "Создай задачу: купить продукты",
     "Что я должен сделать сегодня?",
     "Запомни заметку: идея для проекта",
   ];
 
+  const AUTO_SUGGESTIONS = [
+    "Исследуй тему искусственного интеллекта",
+    "Спланируй мою рабочую неделю",
+    "Помоги мне стать продуктивнее",
+  ];
+
   return (
-    <div className="flex h-[calc(100dvh-0px)] md:h-[calc(100dvh-0px)] overflow-hidden">
+    <div className="flex h-[calc(100dvh-0px)] overflow-hidden">
       {/* Sidebar */}
       <div className={cn(
         "border-r bg-sidebar flex-col shrink-0 transition-all",
@@ -338,13 +434,15 @@ export default function ChatPage() {
           >
             {showSidebar ? <ChevronLeft className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
           </button>
-          <div>
-            <h1 className="text-lg font-serif font-bold text-foreground">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-serif font-bold text-foreground truncate">
               {activeConvId
                 ? (conversations as Conversation[]).find(c => c.id === activeConvId)?.title ?? "Диалог"
                 : "Ассистент"}
             </h1>
-            <p className="text-xs text-muted-foreground">LLaMA 3.3 70B · Полный агент</p>
+            <p className="text-xs text-muted-foreground">
+              LLaMA 3.3 70B · {autoMode ? "🤖 Автономный режим" : "Обычный режим"}
+            </p>
           </div>
         </div>
 
@@ -358,11 +456,13 @@ export default function ChatPage() {
               <div>
                 <p className="font-semibold text-foreground">Начните разговор</p>
                 <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                  Я могу создавать задачи, заметки и напоминания прямо из чата.
+                  {autoMode
+                    ? "Авторежим: агент сам составит план и выполнит каждый шаг."
+                    : "Я могу создавать задачи, заметки и напоминания прямо из чата."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-sm">
-                {SUGGESTIONS.map((s) => (
+                {(autoMode ? AUTO_SUGGESTIONS : SUGGESTIONS).map((s) => (
                   <button
                     key={s}
                     onClick={() => setInput(s)}
@@ -383,7 +483,17 @@ export default function ChatPage() {
                 <MessageBubble key={msg.id} message={msg} />
               ))}
               {streaming && (
-                <StreamingBubble content={streamContent} tool={activeTool} />
+                <>
+                  {autonomousPlan && (
+                    <PlanPanel
+                      plan={autonomousPlan}
+                      currentIdx={currentSubtaskIdx}
+                      completed={completedSubtasks}
+                      phase={autonomousPhase}
+                    />
+                  )}
+                  <StreamingBubble content={streamContent} tool={activeTool} />
+                </>
               )}
               <div ref={bottomRef} />
             </>
@@ -393,11 +503,27 @@ export default function ChatPage() {
         {/* Input */}
         <div className="p-4 border-t shrink-0">
           <div className="flex gap-2 items-end">
+            {/* Auto mode toggle */}
+            <button
+              onClick={() => setAutoMode((v) => !v)}
+              title={autoMode ? "Выключить автономный режим" : "Включить автономный режим"}
+              className={cn(
+                "shrink-0 h-11 w-11 rounded-lg flex items-center justify-center transition-all border",
+                autoMode
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/30"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <Zap className={cn("w-4 h-4", autoMode && "fill-current")} />
+            </button>
+
             <Textarea
               data-testid="input-chat-message"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Напишите сообщение... (Enter — отправить)"
+              placeholder={autoMode
+                ? "Дайте сложную задачу — агент сам составит план..."
+                : "Напишите сообщение... (Enter — отправить)"}
               className="resize-none min-h-[44px] max-h-32 flex-1"
               rows={1}
               disabled={streaming}
@@ -419,7 +545,9 @@ export default function ChatPage() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-1.5 text-center">
-            Shift+Enter — новая строка · Агент сам создаёт задачи, заметки и напоминания
+            {autoMode
+              ? "⚡ Автономный режим — агент планирует, выполняет и учится"
+              : "Shift+Enter — новая строка · Агент сам создаёт задачи, заметки и напоминания"}
           </p>
         </div>
       </div>

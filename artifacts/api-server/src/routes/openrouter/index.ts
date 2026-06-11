@@ -441,6 +441,86 @@ async function agenticLoopStreaming(
   return fullResponse;
 }
 
+// ─── Autonomous agent loop ────────────────────────────────────────────────────
+
+async function autonomousAgentLoop(
+  goal: string,
+  baseMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  write: (data: string) => void,
+): Promise<string> {
+  const allParts: string[] = [];
+
+  // Phase 1: Build a plan
+  write(`data: ${JSON.stringify({ autonomous_phase: "planning" })}\n\n`);
+
+  const planComp = await callWithFallback({
+    max_tokens: 400,
+    messages: [
+      ...baseMessages,
+      {
+        role: "user",
+        content: `Составь план для задачи: "${goal}"\nОтветь ТОЛЬКО JSON без пояснений: {"subtasks":["подзадача 1","подзадача 2","подзадача 3"]}\nМаксимум 4 подзадачи, каждая — конкретное действие.`,
+      },
+    ],
+    stream: false,
+  }, write);
+
+  let subtasks: string[] = [];
+  try {
+    const raw = planComp.choices[0]?.message?.content ?? "{}";
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) subtasks = (JSON.parse(match[0]) as { subtasks?: string[] }).subtasks ?? [];
+  } catch { /* empty */ }
+  if (subtasks.length === 0) subtasks = [goal];
+
+  write(`data: ${JSON.stringify({ autonomous_plan: subtasks })}\n\n`);
+
+  // Phase 2: Execute each subtask
+  const completedSummaries: string[] = [];
+  const [sysMsg, ...rest] = baseMessages;
+  const baseSysContent = (sysMsg as { content?: string }).content ?? "";
+
+  for (let i = 0; i < subtasks.length; i++) {
+    const subtask = subtasks[i];
+    write(`data: ${JSON.stringify({ autonomous_subtask: { text: subtask, index: i, total: subtasks.length } })}\n\n`);
+
+    const subtaskMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: `${baseSysContent}\n\nАВТОНОМНЫЙ РЕЖИМ — шаг ${i + 1}/${subtasks.length}: "${subtask}"\nОбщая цель: "${goal}"${completedSummaries.length ? `\nУже сделано: ${completedSummaries.join("; ")}` : ""}\nВыполни ТОЛЬКО эту подзадачу. Используй инструменты если нужно. Будь конкретным.`,
+      },
+      ...rest,
+    ];
+
+    const subtaskResult = await agenticLoopStreaming(
+      subtaskMessages,
+      () => {},
+      write,
+    );
+    completedSummaries.push(subtaskResult.slice(0, 150));
+    allParts.push(subtaskResult);
+
+    write(`data: ${JSON.stringify({ autonomous_subtask_done: i })}\n\n`);
+  }
+
+  // Phase 3: Reflect & save skills
+  write(`data: ${JSON.stringify({ autonomous_phase: "reflection" })}\n\n`);
+
+  const reflectMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: `${baseSysContent}\n\nАВТОНОМНЫЙ РЕЖИМ — РЕФЛЕКСИЯ\nТы выполнил задачу "${goal}" за ${subtasks.length} шагов.\nРезультаты: ${completedSummaries.join(" | ")}\n\nСделай две вещи:\n1. Напиши краткий итог (1-2 предложения)\n2. Если узнал что-то полезное — сохрани через remember_fact с ключом "навык:<тема>" или "предпочтение:<тема>"`,
+    },
+    ...rest,
+  ];
+
+  const reflection = await agenticLoopStreaming(reflectMessages, () => {}, write);
+  allParts.push(reflection);
+  write(`data: ${JSON.stringify({ autonomous_phase: "done" })}\n\n`);
+
+  return allParts.join("\n\n");
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 router.get("/openrouter/conversations", async (_req, res): Promise<void> => {
@@ -522,12 +602,20 @@ ${memoryContext}
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
+  const isAutonomous = (req.body as { autonomous?: boolean }).autonomous === true;
+
   try {
-    const fullResponse = await agenticLoopStreaming(
-      chatMessages,
-      (tool) => logger.info({ tool }, "Agent tool call"),
-      (data) => res.write(data),
-    );
+    const fullResponse = isAutonomous
+      ? await autonomousAgentLoop(
+          parsed.data.content,
+          chatMessages,
+          (data) => res.write(data),
+        )
+      : await agenticLoopStreaming(
+          chatMessages,
+          (tool) => logger.info({ tool }, "Agent tool call"),
+          (data) => res.write(data),
+        );
 
     if (fullResponse) {
       await db.insert(messages).values({ conversationId: id, role: "assistant", content: fullResponse });
