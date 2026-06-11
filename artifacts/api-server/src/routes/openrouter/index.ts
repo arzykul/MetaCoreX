@@ -16,12 +16,12 @@ const router: IRouter = Router();
 // Primary: Groq (fast, free). Fallback: OpenRouter
 const groq = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
-  apiKey: process.env.GROQ_API_KEY ?? "",
+  apiKey: process.env.GROQ_API_KEY || "missing-groq-key",
 });
 
 const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENROUTER_API_KEY ?? "",
+  apiKey: process.env.OPENROUTER_API_KEY || "missing-openrouter-key",
 });
 
 type Provider = { client: OpenAI; model: string; name: string };
