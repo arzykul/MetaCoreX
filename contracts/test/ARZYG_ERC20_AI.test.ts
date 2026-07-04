@@ -168,7 +168,7 @@ describe("ARZYG_ERC20_AI — v2.1", () => {
       const supplyBefore = await token.totalSupply();
 
       await expect(router.fulfillSuccess(await token.getAddress(), requestId, 0n))
-        .to.emit(token, "ProofRejected")
+        .to.emit(token, "OracleProofRejected")
         .withArgs(requestId, "Rejected by AI: Score too low");
 
       expect(await token.totalSupply()).to.equal(supplyBefore);
@@ -193,7 +193,7 @@ describe("ARZYG_ERC20_AI — v2.1", () => {
       await expect(
         router.fulfillError(await token.getAddress(), requestId, "API timeout")
       )
-        .to.emit(token, "ProofRejected")
+        .to.emit(token, "OracleProofRejected")
         .withArgs(requestId, "API timeout");
     });
 

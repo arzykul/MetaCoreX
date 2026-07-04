@@ -33,13 +33,27 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
         string proof;
     }
 
+    struct Agent {
+        string name;
+        string description;
+        uint256 registeredAt;
+        uint256 totalEarned;
+        uint256 tasksCompleted;
+        bool isActive;
+    }
+
     mapping(bytes32 => ProofRequest) public pendingRequests;
+    mapping(address => Agent) public agents;
+    uint256 public agentCount;
 
     event MintRequested(bytes32 indexed requestId, address indexed to, uint256 amount, string proof);
     event AIMinted(address indexed to, uint256 amount, string proof);
     event TokenBirthed(address indexed agent, uint256 totalAmount, uint256 rewardAmount, uint256 feeAmount);
-    event ProofRejected(bytes32 indexed requestId, string reason);
+    event OracleProofRejected(bytes32 indexed requestId, string reason);
     event ReserveChanged(address indexed oldReserve, address indexed newReserve);
+    event AgentRegistered(address indexed agent, string name, string description, uint256 registeredAt);
+    event ProofAccepted(address indexed agent, string proof, uint256 amount, uint256 score, uint256 reward);
+    event ProofRejected(address indexed agent, string proof, string reason);
 
     constructor(
         uint256 initialSupply,
@@ -120,7 +134,7 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
         delete pendingRequests[requestId];
 
         if (bytes(err).length > 0) {
-            emit ProofRejected(requestId, string(err));
+            emit OracleProofRejected(requestId, string(err));
             return;
         }
 
@@ -129,7 +143,7 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
         if (score >= 1) {
             birthToken(req.to, req.amount, req.proof);
         } else {
-            emit ProofRejected(requestId, "Rejected by AI: Score too low");
+            emit OracleProofRejected(requestId, "Rejected by AI: Score too low");
         }
     }
 
@@ -142,6 +156,68 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
 
         emit TokenBirthed(_agent, _amount, agentReward, feeAmount);
         emit AIMinted(_agent, agentReward, _proof);
+    }
+
+    function registerAgent(string memory name, string memory description) external {
+        require(bytes(name).length > 0, "Name required");
+        require(!agents[msg.sender].isActive, "Agent already registered");
+
+        agents[msg.sender] = Agent({
+            name: name,
+            description: description,
+            registeredAt: block.timestamp,
+            totalEarned: 0,
+            tasksCompleted: 0,
+            isActive: true
+        });
+
+        agentCount += 1;
+
+        emit AgentRegistered(msg.sender, name, description, block.timestamp);
+    }
+
+    function submitProof(string memory proof, uint256 amount, uint256 score) external {
+        Agent storage agent = agents[msg.sender];
+        require(agent.isActive, "Agent not registered");
+        require(amount > 0, "Amount must be positive");
+
+        if (score == 0) {
+            emit ProofRejected(msg.sender, proof, "Score too low");
+            return;
+        }
+
+        uint256 reward = (amount * score) / 10;
+        require(reward > 0, "Reward too small");
+
+        agent.totalEarned += reward;
+        agent.tasksCompleted += 1;
+
+        _mint(msg.sender, reward);
+
+        emit ProofAccepted(msg.sender, proof, amount, score, reward);
+    }
+
+    function getAgentInfo(address agentAddress)
+        external
+        view
+        returns (
+            string memory name,
+            string memory description,
+            uint256 registeredAt,
+            uint256 totalEarned,
+            uint256 tasksCompleted,
+            bool isActive
+        )
+    {
+        Agent memory agent = agents[agentAddress];
+        return (
+            agent.name,
+            agent.description,
+            agent.registeredAt,
+            agent.totalEarned,
+            agent.tasksCompleted,
+            agent.isActive
+        );
     }
 
     function toAsciiString(address x) internal pure returns (string memory) {

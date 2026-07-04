@@ -5,14 +5,27 @@ description: Live deployment addresses, secrets, and project status for MetaCore
 
 ## Sepolia Deployment (LIVE)
 
-- **ARZYG_ERC20_AI**: `0x15D72D1656cA5A63207AcD278fC2501d8cc64f56`
+- **ARZYG_ERC20_AI**: `0xdd378e369640Be59E7DE4D1BAeF6Ec7F0bC14E94` (v2.2 — added Agent registry/proof-of-work; redeployed 2026-07-04, replaces prior `0x15D72D16...` address)
 - **Deployer/Owner**: `0x8b7C9bB9794e849a64242CEd0B7fe4604cB4A0D6`
 - **Network**: Ethereum Sepolia (chainId: 11155111)
-- **Tx Hash**: `0xe582e86ef179e9fadd0aa5df9ed00bbbb4c54759c7743fe5cd291c14b524c227`
-- **Etherscan**: https://sepolia.etherscan.io/address/0x15D72D1656cA5A63207AcD278fC2501d8cc64f56
+- **Tx Hash**: `0xd74ac6b83bca5593980dc0d1c6b6fdf9f9124734f5cb77e980e603c20444ec5e`
+- **Etherscan**: https://sepolia.etherscan.io/address/0xdd378e369640Be59E7DE4D1BAeF6Ec7F0bC14E94
 - **Initial Supply**: 1,000,000 ARZYG
 - **Chainlink Router (Sepolia)**: `0xb83E47C2bC239B3bf370bc41e1459A34b41238D0`
 - **Chainlink DON**: `fun-ethereum-sepolia-1`
+
+## Contract has no upgrade proxy
+
+ARZYG_ERC20_AI is deployed as a plain (non-upgradeable) contract. Any change to `.sol` requires a full redeploy at a **new address** — update `contracts/deployed.json`, this memory file, and restart the API server so `contractService` reconnects to the new address/ABI.
+
+## Agent registry / proof-of-work (v2.2, added 2026-07-04)
+
+- `Agent` struct (name, description, registeredAt, totalEarned, tasksCompleted, isActive) + `agents` mapping + `agentCount`.
+- `registerAgent(name, description)` — self-registration, one-time (reverts if already active).
+- `submitProof(proof, amount, score)` — caller must be a registered active agent; reward = `amount * score / 10`, minted directly to `msg.sender`. **No verification of amount/score** — any registered agent can mint arbitrary amounts by self-reporting a high score. This was implemented exactly as requested but is a known trust/security gap flagged to the user; revisit with an authorization/oracle check before mainnet.
+- `getAgentInfo(address)` — explicit read accessor (the public `agents` mapping already exposes an auto-getter with the same shape).
+- Renamed the original oracle-rejection event from `ProofRejected(bytes32,string)` to `OracleProofRejected(bytes32,string)` to avoid an ambiguous-overload error in ethers (ethers v6 chai matchers can't disambiguate `.emit(token, "ProofRejected")` when two events share a name with different param types). The new agent-flow `ProofRejected(address,string,string)` keeps the name the user asked for.
+- API server (`contractService.ts`, `eventBus.ts`, `routes/events.ts`) updated in lockstep: event union renamed `ProofRejected` → `OracleProofRejected`, added `AgentRegistered`/`ProofAccepted`/`ProofRejected` (agent variant) listeners.
 
 ## Secrets in Replit
 

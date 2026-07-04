@@ -3,9 +3,12 @@ import { EventEmitter } from "node:events";
 export type McxEventType =
   | "MintRequested"
   | "TokenBirthed"
-  | "ProofRejected"
+  | "OracleProofRejected"
   | "AgentStatusChanged"
-  | "SystemMessage";
+  | "SystemMessage"
+  | "AgentRegistered"
+  | "ProofAccepted"
+  | "ProofRejected";
 
 export interface McxEvent {
   type: McxEventType;

@@ -286,8 +286,33 @@ class ContractService {
       logger.info({ to, amount: ethers.formatEther(amount), proof }, "AIMinted on-chain");
     });
 
-    token.on("ProofRejected", (requestId: string, reason: string) => {
-      mcxEventBus.publish("ProofRejected", { requestId, reason, source: "blockchain" });
+    token.on("OracleProofRejected", (requestId: string, reason: string) => {
+      mcxEventBus.publish("OracleProofRejected", { requestId, reason, source: "blockchain" });
+    });
+
+    token.on("AgentRegistered", (agent: string, name: string, description: string, registeredAt: bigint) => {
+      mcxEventBus.publish("AgentRegistered", {
+        agent,
+        name,
+        description,
+        registeredAt: registeredAt.toString(),
+        source: "blockchain",
+      });
+    });
+
+    token.on("ProofAccepted", (agent: string, proof: string, amount: bigint, score: bigint, reward: bigint) => {
+      mcxEventBus.publish("ProofAccepted", {
+        agent,
+        proof,
+        amount: amount.toString(),
+        score: score.toString(),
+        reward: reward.toString(),
+        source: "blockchain",
+      });
+    });
+
+    token.on("ProofRejected", (agent: string, proof: string, reason: string) => {
+      mcxEventBus.publish("ProofRejected", { agent, proof, reason, source: "blockchain" });
     });
 
     token.on("Transfer", (from: string, to: string, value: bigint) => {

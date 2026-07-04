@@ -4,9 +4,12 @@ import { mcxEventBus, type McxEventType } from "../ws/eventBus.js";
 const ALLOWED_TYPES: McxEventType[] = [
   "MintRequested",
   "TokenBirthed",
-  "ProofRejected",
+  "OracleProofRejected",
   "AgentStatusChanged",
   "SystemMessage",
+  "AgentRegistered",
+  "ProofAccepted",
+  "ProofRejected",
 ];
 
 const router = Router();
