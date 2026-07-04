@@ -36,36 +36,6 @@ export interface AgentInfo {
   isActive: boolean;
 }
 
-export interface RegisterAgentInput {
-  name: string;
-  description: string;
-  privateKey: string;
-}
-
-export interface RegisterAgentResult {
-  ok: boolean;
-  txHash: string;
-  agentAddress: string;
-  name: string;
-  description: string;
-}
-
-export interface SubmitProofInput {
-  proof: string;
-  amount: string;
-  score: number | string;
-  privateKey: string;
-  agentAddress?: string;
-}
-
-export interface SubmitProofResult {
-  ok: boolean;
-  txHash: string;
-  accepted: boolean;
-  reward?: string;
-  reason?: string;
-}
-
 export interface ApiErrorBody {
   ok?: boolean;
   error: string;
@@ -131,21 +101,11 @@ export async function getAgent(address: string): Promise<AgentInfo> {
   return data.agent;
 }
 
-/** POST /api/agents/register — self-register a new AI agent on-chain. */
-export function registerAgent(input: RegisterAgentInput): Promise<RegisterAgentResult> {
-  return apiFetch<RegisterAgentResult>("/api/agents/register", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-/**
- * POST /api/agents/submit-proof — submit a proof-of-work for a registered
- * agent. reward = amount * score / 10, enforced on-chain.
- */
-export function submitProof(input: SubmitProofInput): Promise<SubmitProofResult> {
-  return apiFetch<SubmitProofResult>("/api/agents/submit-proof", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
+// Note: registration and proof submission are done client-side via the
+// connected wallet (wagmi `writeContract` against the ARZYG_AGENT_ABI in
+// src/lib/contract-abi.ts — see dashboard.tsx), not through the API
+// server's privateKey-based /api/agents/register and /api/agents/submit-proof
+// routes. Those routes still exist for server-side automation (see
+// scripts/src/auto-agent.ts) but are intentionally not called from this
+// public-facing site, since collecting a raw private key in a web form is
+// not an appropriate pattern for a public site.

@@ -1,13 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   getContractInfo,
   getContractStatus,
   listAgents,
   getAgent,
-  registerAgent,
-  submitProof,
-  type RegisterAgentInput,
-  type SubmitProofInput,
 } from "@/lib/api";
 
 export const queryKeys = {
@@ -46,25 +42,5 @@ export function useAgent(address: string) {
     queryKey: queryKeys.agent(address),
     queryFn: () => getAgent(address),
     enabled: !!address,
-  });
-}
-
-export function useRegisterAgent() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: RegisterAgentInput) => registerAgent(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents });
-    },
-  });
-}
-
-export function useSubmitProof() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: SubmitProofInput) => submitProof(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents });
-    },
   });
 }

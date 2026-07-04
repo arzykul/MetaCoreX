@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { useContractInfo, useContractStatus } from "@/hooks/use-api";
+import { useAgents, useContractInfo, useContractStatus } from "@/hooks/use-api";
 import { useMcxEvents } from "@/lib/ws";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Activity, ArrowRight, Code, Cpu, Shield, Wallet, Zap } from "lucide-react";
@@ -10,13 +10,15 @@ import { Activity, ArrowRight, Code, Cpu, Shield, Wallet, Zap } from "lucide-rea
 function formatUptime(seconds: number) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
   if (h > 0) return `${h}h ${m}m`;
-  return `${m}m ${seconds % 60}s`;
+  return `${m}m ${s}s`;
 }
 
 export default function Landing() {
   const { data: contractInfo, isLoading: isLoadingInfo } = useContractInfo();
   const { data: contractStatus, isLoading: isLoadingStatus } = useContractStatus();
+  const { data: agents = [], isLoading: isLoadingAgents } = useAgents();
   const { events, connected } = useMcxEvents(10);
 
   return (
@@ -72,27 +74,17 @@ export default function Landing() {
           <div className="container mx-auto px-4">
             <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-border border-l border-r border-border">
               <div className="p-6 md:p-8 flex flex-col items-center text-center">
-                <span className="text-sm text-muted-foreground mb-2 font-mono uppercase tracking-wider">Network</span>
-                {isLoadingInfo ? (
+                <span className="text-sm text-muted-foreground mb-2 font-mono uppercase tracking-wider">Agents</span>
+                {isLoadingAgents ? (
                   <Skeleton className="h-8 w-24" />
                 ) : (
-                  <span className="text-2xl font-bold font-display text-primary" data-testid="stat-network">
-                    {contractInfo?.network || "Sepolia"}
+                  <span className="text-2xl font-bold font-display text-primary" data-testid="stat-agents">
+                    {agents.length.toLocaleString()}
                   </span>
                 )}
               </div>
               <div className="p-6 md:p-8 flex flex-col items-center text-center">
-                <span className="text-sm text-muted-foreground mb-2 font-mono uppercase tracking-wider">Block Height</span>
-                {isLoadingInfo ? (
-                  <Skeleton className="h-8 w-24" />
-                ) : (
-                  <span className="text-2xl font-bold font-display text-primary" data-testid="stat-block">
-                    {contractInfo?.blockNumber?.toLocaleString() || "—"}
-                  </span>
-                )}
-              </div>
-              <div className="p-6 md:p-8 flex flex-col items-center text-center">
-                <span className="text-sm text-muted-foreground mb-2 font-mono uppercase tracking-wider">Total Supply</span>
+                <span className="text-sm text-muted-foreground mb-2 font-mono uppercase tracking-wider">Tokens</span>
                 {isLoadingInfo ? (
                   <Skeleton className="h-8 w-32" />
                 ) : (
@@ -110,6 +102,13 @@ export default function Landing() {
                     {contractStatus?.uptimeSeconds ? formatUptime(contractStatus.uptimeSeconds) : "—"}
                   </span>
                 )}
+              </div>
+              <div className="p-6 md:p-8 flex flex-col items-center text-center">
+                <span className="text-sm text-muted-foreground mb-2 font-mono uppercase tracking-wider">Countries</span>
+                <span className="text-2xl font-bold font-display text-muted-foreground/60" data-testid="stat-countries">
+                  N/A
+                </span>
+                <span className="text-[10px] text-muted-foreground/70 mt-1 uppercase tracking-wide">Not tracked yet</span>
               </div>
             </div>
           </div>
