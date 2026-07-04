@@ -1,11 +1,12 @@
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/layout/navbar";
+import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useAgents, useContractInfo, useContractStatus } from "@/hooks/use-api";
 import { useMcxEvents } from "@/lib/ws";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, ArrowRight, Code, Cpu, Shield, Wallet, Zap } from "lucide-react";
+import { Activity, Code, Cpu, Shield, Wallet, Zap } from "lucide-react";
 
 function formatUptime(seconds: number) {
   const h = Math.floor(seconds / 3600);
@@ -234,33 +235,7 @@ export default function Landing() {
         </section>
       </main>
 
-      <footer className="py-12 bg-card">
-        <div className="container mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
-            <Cpu className="w-5 h-5 text-primary" />
-            <span className="font-display font-extrabold text-lg tracking-tight text-foreground">MetaCoreX</span>
-          </div>
-          <div className="flex gap-6 text-sm text-muted-foreground">
-            {contractInfo?.etherscan && (
-              <a
-                href={contractInfo.etherscan}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-primary transition-colors flex items-center gap-1"
-                data-testid="link-footer-etherscan"
-              >
-                Explorer <ArrowRight className="w-3 h-3" />
-              </a>
-            )}
-            <Link href="/dashboard" className="hover:text-primary transition-colors" data-testid="link-footer-console">
-              Operator Console
-            </Link>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} MetaCoreX Protocol
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

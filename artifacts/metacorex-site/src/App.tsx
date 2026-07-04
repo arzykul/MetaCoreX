@@ -7,6 +7,11 @@ import { wagmiConfig } from "@/lib/wagmi";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
+import Faq from "@/pages/faq";
+import Blog from "@/pages/blog";
+import BlogPost from "@/pages/blog-post";
+import Docs from "@/pages/docs";
+import Contact from "@/pages/contact";
 
 const queryClient = new QueryClient();
 
@@ -15,6 +20,11 @@ function Router() {
     <Switch>
       <Route path="/" component={Landing} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/faq" component={Faq} />
+      <Route path="/blog/:slug" component={BlogPost} />
+      <Route path="/blog" component={Blog} />
+      <Route path="/docs" component={Docs} />
+      <Route path="/contact" component={Contact} />
       <Route component={NotFound} />
     </Switch>
   );

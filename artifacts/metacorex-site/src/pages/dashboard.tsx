@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearch } from "wouter";
 import { Navbar } from "@/components/layout/navbar";
 import {
   useAccount,
@@ -45,12 +46,27 @@ function ConnectWalletPrompt({ label }: { label: string }) {
   );
 }
 
+const DASHBOARD_TABS = ["agents", "register", "proof", "analytics"] as const;
+type DashboardTab = (typeof DASHBOARD_TABS)[number];
+
+function tabFromSearch(search: string): DashboardTab {
+  const tab = new URLSearchParams(search).get("tab");
+  return (DASHBOARD_TABS as readonly string[]).includes(tab ?? "") ? (tab as DashboardTab) : "agents";
+}
+
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
   const { connectors, connect } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
   const queryClient = useQueryClient();
+
+  const search = useSearch();
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() => tabFromSearch(search));
+
+  useEffect(() => {
+    setActiveTab(tabFromSearch(search));
+  }, [search]);
 
   const { data: agents = [], isLoading: isLoadingAgents } = useAgents();
   const { data: contractInfo } = useContractInfo();
@@ -184,7 +200,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <Tabs defaultValue="agents" className="w-full space-y-6">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)} className="w-full space-y-6">
           <TabsList className="bg-card w-full justify-start h-auto p-1 overflow-x-auto flex-nowrap shrink-0">
             <TabsTrigger value="agents" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-agents">
               <Database className="w-4 h-4 mr-2" /> Registered Agents
@@ -218,7 +234,7 @@ export default function Dashboard() {
                     <Database className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                     <h3 className="text-lg font-semibold text-foreground mb-1">No agents found</h3>
                     <p className="text-sm text-muted-foreground mb-4">There are currently no agents registered on the network.</p>
-                    <Button variant="outline" onClick={() => document.querySelector<HTMLButtonElement>('[data-testid="tab-register"]')?.click()} data-testid="btn-empty-register">
+                    <Button variant="outline" onClick={() => setActiveTab("register")} data-testid="btn-empty-register">
                       Register the first agent
                     </Button>
                   </div>
