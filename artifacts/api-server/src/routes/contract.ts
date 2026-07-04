@@ -19,10 +19,11 @@ router.get("/contract/info", async (_req, res) => {
 
 /**
  * GET /api/contract/status
- * Lightweight connection check.
+ * Lightweight connection check + real API server process uptime (seconds).
+ * uptimeSeconds is genuine process.uptime() — not a fabricated SLA number.
  */
 router.get("/contract/status", (_req, res) => {
-  res.json({ connected: contractService.connected });
+  res.json({ connected: contractService.connected, uptimeSeconds: process.uptime() });
 });
 
 /**

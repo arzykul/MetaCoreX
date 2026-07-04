@@ -56,7 +56,7 @@ Identity pattern: generates its own wallet on first run, persists it to a gitign
 
 1. **Chainlink Subscription** — user has 25 LINK + 0.04 ETH on deployer wallet. Needs to create subscription at functions.chain.link/sepolia, fund with 5 LINK, add consumer `0x15D72D1656...`, then add CHAINLINK_SUBSCRIPTION_ID to Replit Secrets. Programmatic creation blocked by Chainlink ToS requirement (must use web UI first).
 2. **Etherscan verification** — needs ETHERSCAN_API_KEY secret, then run `pnpm --filter @workspace/contracts run verify:sepolia`
-3. **Public landing page/website** — user requested this, not yet built
+3. **Public landing page/website** — built as `artifacts/metacorex-site` (preview path `/metacorex-site/`): landing page + wallet-connected `/dashboard` operator console.
 4. **Contract upgrades** — v2.2 Staking, v2.3 Governance, v2.4 PoU score tiers discussed
 
 ## Local Hardhat

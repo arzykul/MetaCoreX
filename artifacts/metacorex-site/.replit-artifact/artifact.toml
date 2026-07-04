@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/metacorex-site/"
+title = "MetaCoreX"
+version = "1.0.0"
+id = "artifacts/metacorex-site"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/metacorex-site/" ]
+localPort = 22610
+
+[services.development]
+run = "pnpm --filter @workspace/metacorex-site run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/metacorex-site", "run", "build" ]
+publicDir = "artifacts/metacorex-site/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22610"
+BASE_PATH = "/metacorex-site/"

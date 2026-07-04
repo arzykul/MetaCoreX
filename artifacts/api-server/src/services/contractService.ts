@@ -333,7 +333,20 @@ class ContractService {
       if (this.agentScanBlock > latest) return;
 
       const filter = this.token.filters.AgentRegistered();
-      const events = await this._queryFilterAdaptive(filter, this.agentScanBlock, latest);
+      // Only advance the checkpoint if the ENTIRE range is confirmed scanned.
+      // If any sub-range ultimately fails (e.g. persistent RPC error), the
+      // checkpoint must NOT move past it — otherwise those blocks are never
+      // retried and any registrations in them are silently lost forever.
+      let events: ethers.EventLog[];
+      try {
+        events = await this._queryFilterAdaptive(filter, this.agentScanBlock, latest);
+      } catch (err) {
+        logger.warn(
+          { err, fromBlock: this.agentScanBlock, toBlock: latest },
+          "contractService: agent registration scan failed, will retry on next call"
+        );
+        return;
+      }
 
       for (const e of events) {
         this.agentAddressCache.add((e.args.agent as string).toLowerCase());
@@ -355,6 +368,13 @@ class ContractService {
    * RPC plans) until each sub-range succeeds or hits a minimal 1-block
    * window. This avoids hard-coding any particular provider's limit.
    */
+  private static readonly RATE_LIMIT_MAX_RETRIES = 4;
+
+  private static isRateLimitError(err: unknown): boolean {
+    const message = err instanceof Error ? err.message : String(err);
+    return message.includes("429") || /compute units/i.test(message);
+  }
+
   private async _queryFilterAdaptive(
     filter: ethers.DeferredTopicFilter,
     fromBlock: number,
@@ -362,22 +382,39 @@ class ContractService {
   ): Promise<ethers.EventLog[]> {
     if (!this.token || fromBlock > toBlock) return [];
 
-    try {
-      const logs = await this.token.queryFilter(filter, fromBlock, toBlock);
-      return logs.filter((l): l is ethers.EventLog => "args" in l);
-    } catch (err) {
-      const range = toBlock - fromBlock;
-      if (range <= 0) {
-        logger.warn({ err, fromBlock, toBlock }, "contractService: log query failed at minimal range, giving up");
-        return [];
+    for (let attempt = 0; attempt <= ContractService.RATE_LIMIT_MAX_RETRIES; attempt++) {
+      try {
+        const logs = await this.token.queryFilter(filter, fromBlock, toBlock);
+        return logs.filter((l): l is ethers.EventLog => "args" in l);
+      } catch (err) {
+        // Free-tier RPC plans (e.g. Alchemy) rate-limit compute units/sec —
+        // this fires even on small/single-block ranges under bursty load, so
+        // back off and retry in place before ever giving up on this range.
+        if (ContractService.isRateLimitError(err) && attempt < ContractService.RATE_LIMIT_MAX_RETRIES) {
+          const backoffMs = 400 * 2 ** attempt;
+          await new Promise((r) => setTimeout(r, backoffMs));
+          continue;
+        }
+
+        const range = toBlock - fromBlock;
+        if (range <= 0) {
+          // Minimal 1-block window still fails after retries — propagate so the
+          // caller does NOT advance its scan checkpoint past this block (see
+          // _scanAgentRegistrations). Silently returning [] here would
+          // permanently lose any registration in this block.
+          throw err;
+        }
+        // Bisect sequentially (not in parallel) — firing concurrent sub-queries
+        // is what triggers the compute-units-per-second rate limit in the
+        // first place, so parallel recursion here would make it worse.
+        const mid = fromBlock + Math.floor(range / 2);
+        const left = await this._queryFilterAdaptive(filter, fromBlock, mid);
+        const right = await this._queryFilterAdaptive(filter, mid + 1, toBlock);
+        return [...left, ...right];
       }
-      const mid = fromBlock + Math.floor(range / 2);
-      const [left, right] = await Promise.all([
-        this._queryFilterAdaptive(filter, fromBlock, mid),
-        this._queryFilterAdaptive(filter, mid + 1, toBlock),
-      ]);
-      return [...left, ...right];
     }
+
+    return [];
   }
 
   // ── Connection lifecycle ────────────────────────────────────────────────────
