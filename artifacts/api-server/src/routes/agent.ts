@@ -61,7 +61,9 @@ router.post("/agents/register", async (req, res): Promise<void> => {
 /**
  * POST /api/agents/submit-proof
  * Submits a proof-of-work on behalf of a registered agent and mints the reward.
- * Body: { agentAddress: string, proof: string, amount: string (wei), score: number|string, privateKey: string }
+ * Body: { proof: string, amount: string (wei), score: number|string, privateKey: string, agentAddress?: string }
+ * agentAddress is optional — if omitted, it is derived from privateKey (submitProof always
+ * credits msg.sender on-chain, so the caller's address IS the agent address).
  * reward = amount * score / 10 (enforced on-chain)
  */
 router.post("/agents/submit-proof", async (req, res): Promise<void> => {
@@ -70,7 +72,7 @@ router.post("/agents/submit-proof", async (req, res): Promise<void> => {
     return;
   }
 
-  const { agentAddress, proof, amount, score, privateKey } = req.body as {
+  const { agentAddress: agentAddressInput, proof, amount, score, privateKey } = req.body as {
     agentAddress?: string;
     proof?: string;
     amount?: string | number;
@@ -78,7 +80,7 @@ router.post("/agents/submit-proof", async (req, res): Promise<void> => {
     privateKey?: string;
   };
 
-  if (!isNonEmptyString(agentAddress) || !ethers.isAddress(agentAddress)) {
+  if (agentAddressInput !== undefined && (typeof agentAddressInput !== "string" || !ethers.isAddress(agentAddressInput))) {
     res.status(400).json({ ok: false, error: "agentAddress must be a valid Ethereum address" });
     return;
   }
@@ -100,6 +102,14 @@ router.post("/agents/submit-proof", async (req, res): Promise<void> => {
   const scoreBig = parseBigIntField(score);
   if (scoreBig === null || scoreBig < 0n) {
     res.status(400).json({ ok: false, error: "score must be a non-negative integer" });
+    return;
+  }
+
+  let agentAddress: string;
+  try {
+    agentAddress = agentAddressInput ?? new ethers.Wallet(privateKey).address;
+  } catch {
+    res.status(400).json({ ok: false, error: "Invalid private key" });
     return;
   }
 

@@ -349,6 +349,10 @@
     .log-entry.ProofRejected .log-type  { color: var(--red); }
     .log-entry.AgentStatusChanged { border-color: var(--purple-dim); }
     .log-entry.AgentStatusChanged .log-type { color: var(--purple); }
+    .log-entry.AgentRegistered { border-color: var(--purple-dim); }
+    .log-entry.AgentRegistered .log-type { color: var(--purple); }
+    .log-entry.ProofAccepted { border-color: var(--green-dim); }
+    .log-entry.ProofAccepted .log-type { color: var(--green); }
     .log-entry.SystemMessage  { border-color: var(--border); }
     .log-entry.SystemMessage .log-type  { color: var(--text-mid); }
     .log-entry.LOCAL          { border-color: var(--border); }
@@ -379,6 +383,92 @@
     .counter-label {
       font-size: 9px; letter-spacing: 2px;
       color: var(--text-dim); margin-top: 3px;
+    }
+
+    /* ── Agent forms grid ── */
+    .grid-agents-forms {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 900px) {
+      .grid-agents-forms { grid-template-columns: 1fr; }
+    }
+
+    .card-label-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-label-row .card-label { margin-bottom: 0; }
+
+    .form-group { margin-bottom: 12px; }
+    .form-label {
+      display: block;
+      font-size: 9px; letter-spacing: 2px;
+      color: var(--text-dim); text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .form-input, .form-textarea {
+      width: 100%;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 9px 10px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .form-input:focus, .form-textarea:focus {
+      border-color: var(--cyan);
+      box-shadow: var(--glow-cyan);
+    }
+    .form-textarea { resize: vertical; min-height: 54px; line-height: 1.5; }
+    .form-hint { font-size: 10px; color: var(--text-dim); margin-top: 5px; }
+    .form-status {
+      font-size: 11px; margin-top: 10px; min-height: 14px;
+      color: var(--text-mid);
+    }
+    .form-status.ok  { color: var(--green); text-shadow: var(--glow-green); }
+    .form-status.err { color: var(--red); }
+
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Agent list ── */
+    .agent-list-card { margin-bottom: 16px; }
+    .agent-list { max-height: 300px; overflow-y: auto; }
+    .agent-list::-webkit-scrollbar { width: 4px; }
+    .agent-list::-webkit-scrollbar-track { background: transparent; }
+    .agent-list::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+
+    .agent-item {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 14px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .agent-item:last-child { border-bottom: none; }
+    .agent-name { font-weight: 600; color: var(--cyan); font-size: 12px; }
+    .agent-desc {
+      font-size: 11px; color: var(--text-mid); margin-top: 3px;
+      max-width: 420px;
+    }
+    .agent-addr { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+    .agent-metrics { text-align: right; flex-shrink: 0; }
+    .agent-earned {
+      font-family: var(--font-head);
+      font-size: 14px; font-weight: 700;
+      color: var(--green);
+      text-shadow: var(--glow-green);
+      white-space: nowrap;
+    }
+    .agent-tasks { font-size: 9px; letter-spacing: 1px; color: var(--text-dim); margin-top: 3px; }
+
+    .agent-list-empty {
+      color: var(--text-dim); font-size: 12px;
+      padding: 20px 0; text-align: center;
     }
 
     /* ── Footer ── */
@@ -518,6 +608,64 @@
       </div>
     </div>
 
+    <!-- Agent Registry -->
+    <div class="grid-agents-forms">
+
+      <!-- Register Agent -->
+      <div class="card">
+        <div class="card-label">Регистрация агента</div>
+        <div class="form-group">
+          <label class="form-label" for="regName">Имя</label>
+          <input class="form-input" type="text" id="regName" placeholder="ScoutAgent-01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="regDescription">Описание</label>
+          <textarea class="form-textarea" id="regDescription" placeholder="Что делает этот агент…"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="regPrivateKey">Приватный ключ</label>
+          <input class="form-input" type="password" id="regPrivateKey" placeholder="0x…" autocomplete="off" />
+          <div class="form-hint">Ключ используется только для подписи транзакции и не сохраняется на сервере.</div>
+        </div>
+        <button class="btn green" id="btnRegister" onclick="registerAgent()">
+          <span class="btn-icon">⬡</span>ЗАРЕГИСТРИРОВАТЬ АГЕНТА
+        </button>
+        <div class="form-status" id="regStatus"></div>
+      </div>
+
+      <!-- Submit Proof -->
+      <div class="card">
+        <div class="card-label">Отправка Proof</div>
+        <div class="form-group">
+          <label class="form-label" for="proofDescription">Описание работы</label>
+          <textarea class="form-textarea" id="proofDescription" placeholder="Что было выполнено агентом…"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="proofAmount">Сумма (ARZYG)</label>
+          <input class="form-input" type="number" id="proofAmount" min="0" step="0.0001" placeholder="1000" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="proofScore">Оценка (1–10)</label>
+          <input class="form-input" type="number" id="proofScore" min="1" max="10" step="1" placeholder="8" />
+        </div>
+        <button class="btn" id="btnSubmitProof" onclick="submitProof()">
+          <span class="btn-icon">✦</span>ОТПРАВИТЬ PROOF
+        </button>
+        <div class="form-status" id="proofStatus"></div>
+      </div>
+    </div>
+
+    <!-- Agent List -->
+    <div class="card agent-list-card">
+      <div class="card-label-row">
+        <div class="card-label">Список агентов</div>
+        <button class="term-ctrl-btn" onclick="loadAgents()">⟲ REFRESH</button>
+      </div>
+      <div class="agent-list" id="agentList">
+        <div class="agent-list-empty" id="agentListEmpty">[ загрузка… ]</div>
+      </div>
+    </div>
+
     <!-- Terminal -->
     <div class="terminal-card">
       <div class="terminal-header">
@@ -551,6 +699,11 @@
       totalMinted: BigInt(0),
       autoScroll: true,
     };
+
+    // Cached wallet from the last successful registration/proof submission,
+    // kept in memory only (never persisted) so the user doesn't have to
+    // re-type their private key for every proof submission in this session.
+    let currentAgent = null;
 
     // ─── WebSocket ──────────────────────────────────────────────────────────
     let ws = null;
@@ -643,6 +796,14 @@
 
         case 'AgentStatusChanged':
           if (data.status) updateAgentStatus(data.status);
+          break;
+
+        case 'AgentRegistered':
+          loadAgents();
+          break;
+
+        case 'ProofAccepted':
+          loadAgents();
           break;
       }
 
@@ -810,6 +971,177 @@
       }
     }
 
+    // ─── Agent registry / proof-of-work ─────────────────────────────────────
+    function setFormStatus(el, text, cls) {
+      el.textContent = text;
+      el.className = 'form-status' + (cls ? ' ' + cls : '');
+    }
+
+    function toWei(amountStr, decimals = 18) {
+      const [intPartRaw, fracPartRaw = ''] = String(amountStr).trim().split('.');
+      const intPart = intPartRaw || '0';
+      const frac = (fracPartRaw + '0'.repeat(decimals)).slice(0, decimals);
+      return BigInt(intPart + frac).toString();
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str ?? '';
+      return div.innerHTML;
+    }
+
+    async function registerAgent() {
+      const name = document.getElementById('regName').value.trim();
+      const description = document.getElementById('regDescription').value.trim();
+      const privateKey = document.getElementById('regPrivateKey').value.trim();
+      const statusEl = document.getElementById('regStatus');
+      const btn = document.getElementById('btnRegister');
+
+      if (!name) {
+        setFormStatus(statusEl, 'Укажите имя агента.', 'err');
+        return;
+      }
+      if (!privateKey) {
+        setFormStatus(statusEl, 'Укажите приватный ключ.', 'err');
+        return;
+      }
+
+      btn.disabled = true;
+      setFormStatus(statusEl, 'Отправка транзакции регистрации…', '');
+      logLocal('⬡ Регистрация агента "' + name + '"…');
+
+      try {
+        const r = await fetch('/api/agents/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description, privateKey }),
+        });
+        const j = await r.json();
+        if (j.ok) {
+          currentAgent = { privateKey, address: j.agentAddress };
+          setFormStatus(statusEl, 'Агент зарегистрирован: ' + truncAddr(j.agentAddress), 'ok');
+          logLocal('◈ Агент зарегистрирован: ' + j.agentAddress);
+          document.getElementById('regPrivateKey').value = '';
+          await loadAgents();
+        } else {
+          setFormStatus(statusEl, 'Ошибка: ' + j.error, 'err');
+          logLocal('✕ Регистрация не удалась: ' + j.error);
+        }
+      } catch (e) {
+        setFormStatus(statusEl, 'Ошибка сети: ' + e.message, 'err');
+        logLocal('✕ Ошибка сети при регистрации: ' + e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function submitProof() {
+      const proof = document.getElementById('proofDescription').value.trim();
+      const amountInput = document.getElementById('proofAmount').value.trim();
+      const scoreInput = document.getElementById('proofScore').value.trim();
+      const statusEl = document.getElementById('proofStatus');
+      const btn = document.getElementById('btnSubmitProof');
+
+      if (!proof || !amountInput || !scoreInput) {
+        setFormStatus(statusEl, 'Заполните все поля.', 'err');
+        return;
+      }
+
+      const score = parseInt(scoreInput, 10);
+      if (isNaN(score) || score < 1 || score > 10) {
+        setFormStatus(statusEl, 'Оценка должна быть числом от 1 до 10.', 'err');
+        return;
+      }
+
+      let amountWei;
+      try {
+        amountWei = toWei(amountInput);
+        if (BigInt(amountWei) <= 0n) throw new Error('zero');
+      } catch (_) {
+        setFormStatus(statusEl, 'Некорректная сумма.', 'err');
+        return;
+      }
+
+      let privateKey = currentAgent?.privateKey;
+      if (!privateKey) {
+        privateKey = prompt('Приватный ключ агента (не сохраняется на сервере):');
+        if (!privateKey) {
+          setFormStatus(statusEl, 'Приватный ключ обязателен для подписи транзакции.', 'err');
+          return;
+        }
+      }
+
+      btn.disabled = true;
+      setFormStatus(statusEl, 'Отправка proof…', '');
+      logLocal('✦ Отправка proof: "' + proof.slice(0, 48) + (proof.length > 48 ? '…' : '') + '"');
+
+      try {
+        const r = await fetch('/api/agents/submit-proof', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proof, amount: amountWei, score, privateKey }),
+        });
+        const j = await r.json();
+        if (j.ok) {
+          currentAgent = { privateKey, address: currentAgent?.address };
+          if (j.accepted) {
+            setFormStatus(statusEl, 'Proof принят · награда ' + formatTokens(j.reward) + ' ARZYG', 'ok');
+            logLocal('✔ Proof принят · reward ' + formatTokens(j.reward) + ' ARZYG');
+          } else {
+            setFormStatus(statusEl, 'Proof отклонён' + (j.reason ? ': ' + j.reason : ''), 'err');
+            logLocal('✕ Proof отклонён' + (j.reason ? ': ' + j.reason : ''));
+          }
+          document.getElementById('proofDescription').value = '';
+          document.getElementById('proofAmount').value = '';
+          document.getElementById('proofScore').value = '';
+          await loadAgents();
+        } else {
+          setFormStatus(statusEl, 'Ошибка: ' + j.error, 'err');
+          logLocal('✕ Отправка proof не удалась: ' + j.error);
+        }
+      } catch (e) {
+        setFormStatus(statusEl, 'Ошибка сети: ' + e.message, 'err');
+        logLocal('✕ Ошибка сети при отправке proof: ' + e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderAgentItem(agent) {
+      const earned = parseFloat(agent.totalEarned || '0').toLocaleString('en-US', {
+        minimumFractionDigits: 2, maximumFractionDigits: 4,
+      });
+      return `
+        <div class="agent-item">
+          <div>
+            <div class="agent-name">${escapeHtml(agent.name)}</div>
+            <div class="agent-desc">${escapeHtml(agent.description || '—')}</div>
+            <div class="agent-addr">${truncAddr(agent.address)}</div>
+          </div>
+          <div class="agent-metrics">
+            <div class="agent-earned">${earned} ARZYG</div>
+            <div class="agent-tasks">${escapeHtml(String(agent.tasksCompleted ?? 0))} PROOFS</div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadAgents() {
+      const listEl = document.getElementById('agentList');
+      try {
+        const r = await fetch('/api/agents/list/all');
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || 'unknown error');
+        if (!j.agents || j.agents.length === 0) {
+          listEl.innerHTML = '<div class="agent-list-empty">[ агенты не найдены ]</div>';
+          return;
+        }
+        listEl.innerHTML = j.agents.map(renderAgentItem).join('');
+      } catch (e) {
+        listEl.innerHTML = '<div class="agent-list-empty">[ ошибка загрузки: ' + escapeHtml(e.message) + ' ]</div>';
+      }
+    }
+
     function clearLog() {
       const term = document.getElementById('terminal');
       term.innerHTML = '<div class="term-empty" id="termEmpty">[ log cleared ]</div>';
@@ -842,6 +1174,7 @@
     // ─── Boot ─────────────────────────────────────────────────────────────────
     connect();
     fetchContractInfo();
+    loadAgents();
     setInterval(fetchContractInfo, 5000);
   </script>
 </body>
