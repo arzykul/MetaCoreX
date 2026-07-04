@@ -859,6 +859,10 @@ importers:
         version: 25.6.2
 
   scripts:
+    dependencies:
+      ethers:
+        specifier: ^6.16.0
+        version: 6.16.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

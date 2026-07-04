@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "agent:auto": "tsx ./src/auto-agent.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "ethers": "^6.16.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",

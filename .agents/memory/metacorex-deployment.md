@@ -42,6 +42,16 @@ ARZYG_ERC20_AI is deployed as a plain (non-upgradeable) contract. Any change to 
 - Repo: https://github.com/arzykul/MetaCoreX
 - Owner: Arzykul Muratov (ArzyNet Labs, Bishkek, Kyrgyzstan)
 
+## Automatic agent script (`scripts/src/auto-agent.ts`, added 2026-07-04)
+
+Standalone script (`pnpm --filter @workspace/scripts run agent:auto`) that self-registers and submits proofs every 10 min via the API server's `/api/agents/*` HTTP endpoints (not direct contract calls — `scripts/*` can't import `artifacts/*` per workspace rules).
+
+Identity pattern: generates its own wallet on first run, persists it to a gitignored local JSON file (`scripts/.auto-agent-identity.json`) instead of requesting a secret from the user. Auto-funds itself with Sepolia ETH from `DEPLOYER_PRIVATE_KEY` on first run only (skipped if balance already sufficient).
+
+**Why:** Avoids friction of asking the user to paste an agent private key into Replit Secrets for something the agent itself generates; keeps the identity stable across restarts without touching the secrets system, which only accepts user-supplied values.
+
+**How to apply:** Reuse this local-identity-file pattern for any future autonomous script that needs a persistent on-chain identity but doesn't warrant a user-managed secret.
+
 ## Pending Work
 
 1. **Chainlink Subscription** — user has 25 LINK + 0.04 ETH on deployer wallet. Needs to create subscription at functions.chain.link/sepolia, fund with 5 LINK, add consumer `0x15D72D1656...`, then add CHAINLINK_SUBSCRIPTION_ID to Replit Secrets. Programmatic creation blocked by Chainlink ToS requirement (must use web UI first).
