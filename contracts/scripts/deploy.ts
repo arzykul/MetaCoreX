@@ -51,6 +51,8 @@ async function main() {
 
   // 3. Persist deployment info (Hardhat runs from contracts/ dir, so path is correct)
   const chainId = (await ethers.provider.getNetwork()).chainId;
+  const deployTx = token.deploymentTransaction();
+  const deploymentReceipt = deployTx ? await deployTx.wait() : null;
   const deployedInfo = {
     network:   "localhost",
     chainId:   Number(chainId),
@@ -61,6 +63,7 @@ async function main() {
         address:  tokenAddress,
         deployer: deployer.address,
         reserve:  reserve,
+        deploymentBlock: deploymentReceipt?.blockNumber ?? null,
         // Path relative to workspace root (for API server)
         abiPath:  "contracts/artifacts/contracts/ARZYG_ERC20_AI.sol/ARZYG_ERC20_AI.json",
       },

@@ -90,6 +90,7 @@ async function main() {
   }
 
   // Persist deployment info
+  const deploymentReceipt = deployTx ? await deployTx.wait() : null;
   const deployedInfo = {
     network:   "sepolia",
     chainId:   Number(network.chainId),
@@ -104,6 +105,7 @@ async function main() {
         donId:          CHAINLINK_DON_ID_SEPOLIA,
         subscriptionId: subscriptionId.toString(),
         txHash:         deployTx?.hash ?? "",
+        deploymentBlock: deploymentReceipt?.blockNumber ?? null,
         etherscan:      `https://sepolia.etherscan.io/address/${tokenAddress}`,
         abiPath: "contracts/artifacts/contracts/ARZYG_ERC20_AI.sol/ARZYG_ERC20_AI.json",
       },

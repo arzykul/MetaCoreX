@@ -9,6 +9,7 @@ description: Live deployment addresses, secrets, and project status for MetaCore
 - **Deployer/Owner**: `0x8b7C9bB9794e849a64242CEd0B7fe4604cB4A0D6`
 - **Network**: Ethereum Sepolia (chainId: 11155111)
 - **Tx Hash**: `0xd74ac6b83bca5593980dc0d1c6b6fdf9f9124734f5cb77e980e603c20444ec5e`
+- **Deployment Block**: `11202366` (anchor for agent-registry log scans — see below)
 - **Etherscan**: https://sepolia.etherscan.io/address/0xdd378e369640Be59E7DE4D1BAeF6Ec7F0bC14E94
 - **Initial Supply**: 1,000,000 ARZYG
 - **Chainlink Router (Sepolia)**: `0xb83E47C2bC239B3bf370bc41e1459A34b41238D0`
@@ -26,6 +27,7 @@ ARZYG_ERC20_AI is deployed as a plain (non-upgradeable) contract. Any change to 
 - `getAgentInfo(address)` — explicit read accessor (the public `agents` mapping already exposes an auto-getter with the same shape).
 - Renamed the original oracle-rejection event from `ProofRejected(bytes32,string)` to `OracleProofRejected(bytes32,string)` to avoid an ambiguous-overload error in ethers (ethers v6 chai matchers can't disambiguate `.emit(token, "ProofRejected")` when two events share a name with different param types). The new agent-flow `ProofRejected(address,string,string)` keeps the name the user asked for.
 - API server (`contractService.ts`, `eventBus.ts`, `routes/events.ts`) updated in lockstep: event union renamed `ProofRejected` → `OracleProofRejected`, added `AgentRegistered`/`ProofAccepted`/`ProofRejected` (agent variant) listeners.
+- REST endpoints added at `/api/agents/register`, `/api/agents/submit-proof`, `/api/agents/:address`, `/api/agents/list/all` (list route registered before the `:address` route in Express 5 to avoid the param swallowing "list"). All 4 verified end-to-end against Sepolia.
 
 ## Secrets in Replit
 

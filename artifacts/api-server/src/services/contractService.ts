@@ -18,12 +18,31 @@ interface DeployedInfo {
       reserve: string;
       abiPath: string;
       etherscan?: string;
+      deploymentBlock?: number | null;
     };
     MockFunctionsRouter?: {
       address: string;
       abiPath: string;
     };
   };
+}
+
+export interface AgentInfo {
+  address: string;
+  name: string;
+  description: string;
+  registeredAt: string;
+  totalEarned: string;
+  totalEarnedWei: string;
+  tasksCompleted: string;
+  isActive: boolean;
+}
+
+export interface SubmitProofResult {
+  txHash: string;
+  accepted: boolean;
+  reward?: string;
+  reason?: string;
 }
 
 export interface TokenInfo {
@@ -60,6 +79,16 @@ class ContractService {
   private deployed:    DeployedInfo    | null = null;
   private _connected = false;
   private _retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Agent registry cache — avoids re-scanning from block 0 on every
+  // listAgents() call, which blows past free-tier eth_getLogs block-range
+  // limits (e.g. Alchemy free tier caps ranges at ~10 blocks). We anchor the
+  // first scan at the contract's deployment block, then only scan forward
+  // incrementally from the last-scanned block on subsequent calls. The live
+  // "AgentRegistered" listener also feeds this cache directly.
+  private agentAddressCache = new Set<string>();
+  private agentScanBlock = 0;
+  private agentScanInFlight: Promise<void> | null = null;
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -167,6 +196,190 @@ class ContractService {
     };
   }
 
+  // ── Agent registry ──────────────────────────────────────────────────────────
+
+  async registerAgent(
+    privateKey: string,
+    name: string,
+    description: string
+  ): Promise<{ txHash: string; agentAddress: string }> {
+    if (!this._connected || !this.token || !this.provider) {
+      throw new Error("Contract not connected");
+    }
+
+    let wallet: ethers.Wallet;
+    try {
+      wallet = new ethers.Wallet(privateKey, this.provider);
+    } catch {
+      throw new Error("Invalid private key");
+    }
+
+    const tokenWithSigner = this.token.connect(wallet) as ethers.Contract;
+    const tx = await tokenWithSigner.registerAgent(name, description);
+    const receipt = await tx.wait();
+
+    return { txHash: receipt?.hash ?? tx.hash, agentAddress: wallet.address };
+  }
+
+  async submitProof(
+    privateKey: string,
+    agentAddress: string,
+    proof: string,
+    amount: bigint,
+    score: bigint
+  ): Promise<SubmitProofResult> {
+    if (!this._connected || !this.token || !this.provider) {
+      throw new Error("Contract not connected");
+    }
+
+    let wallet: ethers.Wallet;
+    try {
+      wallet = new ethers.Wallet(privateKey, this.provider);
+    } catch {
+      throw new Error("Invalid private key");
+    }
+
+    if (wallet.address.toLowerCase() !== agentAddress.toLowerCase()) {
+      throw new Error(
+        "agentAddress does not match the address derived from privateKey — submitProof always credits the caller (msg.sender)"
+      );
+    }
+
+    const tokenWithSigner = this.token.connect(wallet) as ethers.Contract;
+    const tx = await tokenWithSigner.submitProof(proof, amount, score);
+    const receipt = await tx.wait();
+
+    let accepted = false;
+    let reward: string | undefined;
+    let reason: string | undefined;
+
+    if (receipt) {
+      for (const log of receipt.logs) {
+        let parsed: ethers.LogDescription | null = null;
+        try {
+          parsed = this.token.interface.parseLog(log);
+        } catch {
+          continue;
+        }
+        if (!parsed) continue;
+
+        if (parsed.name === "ProofAccepted") {
+          accepted = true;
+          reward = (parsed.args.reward as bigint).toString();
+        } else if (parsed.name === "ProofRejected") {
+          accepted = false;
+          reason = parsed.args.reason as string;
+        }
+      }
+    }
+
+    return { txHash: receipt?.hash ?? tx.hash, accepted, reward, reason };
+  }
+
+  async getAgentInfo(address: string): Promise<AgentInfo | null> {
+    if (!this._connected || !this.token) {
+      return null;
+    }
+
+    const result = await this.token.getAgentInfo(address);
+
+    return {
+      address,
+      name: result.name as string,
+      description: result.description as string,
+      registeredAt: (result.registeredAt as bigint).toString(),
+      totalEarned: ethers.formatEther(result.totalEarned as bigint),
+      totalEarnedWei: (result.totalEarned as bigint).toString(),
+      tasksCompleted: (result.tasksCompleted as bigint).toString(),
+      isActive: result.isActive as boolean,
+    };
+  }
+
+  async listAgents(): Promise<AgentInfo[]> {
+    if (!this._connected || !this.token) {
+      return [];
+    }
+
+    try {
+      await this._scanAgentRegistrations();
+
+      const infos = await Promise.all(
+        [...this.agentAddressCache].map((addr) => this.getAgentInfo(addr))
+      );
+
+      return infos.filter((info): info is AgentInfo => info !== null && info.isActive);
+    } catch (err) {
+      logger.warn({ err }, "contractService.listAgents failed");
+      return [];
+    }
+  }
+
+  /**
+   * Incrementally scans for AgentRegistered logs since the last scanned
+   * block and merges any new addresses into agentAddressCache. Coalesces
+   * concurrent callers into a single in-flight scan.
+   */
+  private async _scanAgentRegistrations(): Promise<void> {
+    if (!this.token || !this.provider) return;
+
+    if (this.agentScanInFlight) {
+      await this.agentScanInFlight;
+      return;
+    }
+
+    const run = async (): Promise<void> => {
+      if (!this.token || !this.provider) return;
+      const latest = await this.provider.getBlockNumber();
+      if (this.agentScanBlock > latest) return;
+
+      const filter = this.token.filters.AgentRegistered();
+      const events = await this._queryFilterAdaptive(filter, this.agentScanBlock, latest);
+
+      for (const e of events) {
+        this.agentAddressCache.add((e.args.agent as string).toLowerCase());
+      }
+
+      this.agentScanBlock = latest + 1;
+    };
+
+    this.agentScanInFlight = run().finally(() => {
+      this.agentScanInFlight = null;
+    });
+
+    await this.agentScanInFlight;
+  }
+
+  /**
+   * Queries a log filter over [fromBlock, toBlock], recursively halving the
+   * range on provider errors (e.g. "block range too large" from free-tier
+   * RPC plans) until each sub-range succeeds or hits a minimal 1-block
+   * window. This avoids hard-coding any particular provider's limit.
+   */
+  private async _queryFilterAdaptive(
+    filter: ethers.DeferredTopicFilter,
+    fromBlock: number,
+    toBlock: number
+  ): Promise<ethers.EventLog[]> {
+    if (!this.token || fromBlock > toBlock) return [];
+
+    try {
+      const logs = await this.token.queryFilter(filter, fromBlock, toBlock);
+      return logs.filter((l): l is ethers.EventLog => "args" in l);
+    } catch (err) {
+      const range = toBlock - fromBlock;
+      if (range <= 0) {
+        logger.warn({ err, fromBlock, toBlock }, "contractService: log query failed at minimal range, giving up");
+        return [];
+      }
+      const mid = fromBlock + Math.floor(range / 2);
+      const [left, right] = await Promise.all([
+        this._queryFilterAdaptive(filter, fromBlock, mid),
+        this._queryFilterAdaptive(filter, mid + 1, toBlock),
+      ]);
+      return [...left, ...right];
+    }
+  }
+
   // ── Connection lifecycle ────────────────────────────────────────────────────
 
   private async _tryConnect(): Promise<void> {
@@ -238,6 +451,15 @@ class ContractService {
 
       this._connected = true;
 
+      // Anchor the agent-registry scan at the contract's deployment block
+      // (if known) so listAgents() never has to scan from block 0. Falls
+      // back to the current block, meaning pre-existing agents registered
+      // before this server session won't be found until re-registered or
+      // deploymentBlock is backfilled.
+      const anchorBlock = deployed.contracts.ARZYG_ERC20_AI.deploymentBlock;
+      this.agentAddressCache = new Set();
+      this.agentScanBlock = typeof anchorBlock === "number" ? anchorBlock : await provider.getBlockNumber();
+
       const networkLabel = deployed.network === "sepolia"
         ? `Sepolia Testnet (chainId: ${deployed.chainId})`
         : `${deployed.network} (chainId: ${deployed.chainId})`;
@@ -291,6 +513,7 @@ class ContractService {
     });
 
     token.on("AgentRegistered", (agent: string, name: string, description: string, registeredAt: bigint) => {
+      this.agentAddressCache.add(agent.toLowerCase());
       mcxEventBus.publish("AgentRegistered", {
         agent,
         name,
@@ -329,6 +552,9 @@ class ContractService {
     this.token      = null;
     this.mockRouter = null;
     this._connected = false;
+    this.agentAddressCache = new Set();
+    this.agentScanBlock = 0;
+    this.agentScanInFlight = null;
   }
 
   private _scheduleRetry(): void {

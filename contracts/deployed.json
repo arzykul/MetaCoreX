@@ -12,6 +12,7 @@
       "donId": "fun-ethereum-sepolia-1",
       "subscriptionId": "0",
       "txHash": "0xd74ac6b83bca5593980dc0d1c6b6fdf9f9124734f5cb77e980e603c20444ec5e",
+      "deploymentBlock": 11202366,
       "etherscan": "https://sepolia.etherscan.io/address/0xdd378e369640Be59E7DE4D1BAeF6Ec7F0bC14E94",
       "abiPath": "contracts/artifacts/contracts/ARZYG_ERC20_AI.sol/ARZYG_ERC20_AI.json"
     }
