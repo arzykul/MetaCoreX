@@ -25,9 +25,9 @@ import { ARZYG_AGENT_ABI } from "@/lib/contract-abi";
 function ConnectWalletPrompt({ label }: { label: string }) {
   const { connectors, connect } = useConnect();
   return (
-    <div className="text-center py-12 border border-dashed border-border rounded-lg bg-background/50">
-      <Wallet className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-      <h3 className="text-lg font-medium text-foreground mb-1">Connect your wallet</h3>
+    <div className="text-center py-12 border border-dashed border-border rounded-lg bg-background">
+      <Wallet className="w-12 h-12 text-primary mx-auto mb-4 opacity-70" />
+      <h3 className="text-lg font-semibold text-foreground mb-1">Connect your wallet</h3>
       <p className="text-sm text-muted-foreground mb-4">{label}</p>
       <div className="flex flex-wrap gap-2 justify-center">
         {connectors.map((connector) => (
@@ -155,7 +155,7 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-3">
             {isConnected ? (
-              <div className="flex items-center gap-3 bg-card border border-border px-4 py-2 rounded-lg">
+              <div className="flex items-center gap-3 bg-card px-4 py-2 rounded-lg shadow-soft">
                 <div className="flex flex-col items-end">
                   <span className="text-xs text-muted-foreground" data-testid="text-wallet-address">
                     {address?.slice(0, 6)}...{address?.slice(-4)}
@@ -185,23 +185,23 @@ export default function Dashboard() {
         </div>
 
         <Tabs defaultValue="agents" className="w-full space-y-6">
-          <TabsList className="bg-card border border-border w-full justify-start h-auto p-1 overflow-x-auto flex-nowrap shrink-0">
-            <TabsTrigger value="agents" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary" data-testid="tab-agents">
+          <TabsList className="bg-card w-full justify-start h-auto p-1 overflow-x-auto flex-nowrap shrink-0">
+            <TabsTrigger value="agents" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-agents">
               <Database className="w-4 h-4 mr-2" /> Registered Agents
             </TabsTrigger>
-            <TabsTrigger value="register" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary" data-testid="tab-register">
+            <TabsTrigger value="register" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-register">
               <Key className="w-4 h-4 mr-2" /> Register Agent
             </TabsTrigger>
-            <TabsTrigger value="proof" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary" data-testid="tab-proof">
+            <TabsTrigger value="proof" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-proof">
               <Activity className="w-4 h-4 mr-2" /> Submit Proof
             </TabsTrigger>
-            <TabsTrigger value="analytics" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary" data-testid="tab-analytics">
+            <TabsTrigger value="analytics" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-analytics">
               <BarChart className="w-4 h-4 mr-2" /> PoU Analytics
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="agents" className="space-y-4">
-            <Card className="border-border bg-card">
+            <Card>
               <CardHeader>
                 <CardTitle>Active Agents ({agents.length})</CardTitle>
                 <CardDescription>Live index of all agents registered in the ARZY-G economy.</CardDescription>
@@ -209,23 +209,23 @@ export default function Dashboard() {
               <CardContent>
                 {isLoadingAgents ? (
                   <div className="space-y-2">
-                    <div className="h-12 bg-muted/20 animate-pulse rounded" />
-                    <div className="h-12 bg-muted/20 animate-pulse rounded" />
-                    <div className="h-12 bg-muted/20 animate-pulse rounded" />
+                    <div className="h-12 bg-muted animate-pulse rounded" />
+                    <div className="h-12 bg-muted animate-pulse rounded" />
+                    <div className="h-12 bg-muted animate-pulse rounded" />
                   </div>
                 ) : agents.length === 0 ? (
-                  <div className="text-center py-12 border border-dashed border-border rounded-lg bg-background/50">
+                  <div className="text-center py-12 border border-dashed border-border rounded-lg bg-background">
                     <Database className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                    <h3 className="text-lg font-medium text-foreground mb-1">No agents found</h3>
+                    <h3 className="text-lg font-semibold text-foreground mb-1">No agents found</h3>
                     <p className="text-sm text-muted-foreground mb-4">There are currently no agents registered on the network.</p>
                     <Button variant="outline" onClick={() => document.querySelector<HTMLButtonElement>('[data-testid="tab-register"]')?.click()} data-testid="btn-empty-register">
                       Register the first agent
                     </Button>
                   </div>
                 ) : (
-                  <div className="rounded-md border border-border overflow-hidden">
+                  <div className="rounded-md overflow-hidden">
                     <table className="w-full text-sm text-left">
-                      <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border">
+                      <thead className="text-xs text-muted-foreground uppercase bg-transparent border-b border-border">
                         <tr>
                           <th className="px-4 py-3 font-mono">Address</th>
                           <th className="px-4 py-3">Name</th>
@@ -235,7 +235,7 @@ export default function Dashboard() {
                       </thead>
                       <tbody className="divide-y divide-border">
                         {agents.map((agent, i) => (
-                          <tr key={agent.address} className="bg-card hover:bg-muted/10 transition-colors" data-testid={`agent-row-${i}`}>
+                          <tr key={agent.address} className="hover:bg-muted/60 transition-colors" data-testid={`agent-row-${i}`}>
                             <td className="px-4 py-3 font-mono text-xs truncate max-w-[150px]">{agent.address}</td>
                             <td className="px-4 py-3 font-medium">{agent.name}</td>
                             <td className="px-4 py-3 text-right text-muted-foreground">{agent.tasksCompleted}</td>
@@ -251,7 +251,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="register">
-            <Card className="border-border bg-card max-w-2xl mx-auto">
+            <Card className="max-w-2xl mx-auto">
               <CardHeader>
                 <CardTitle>Register Autonomous Agent</CardTitle>
                 <CardDescription>Deploy a new agent identity to the Sepolia testnet using your connected wallet.</CardDescription>
@@ -321,7 +321,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="proof">
-            <Card className="border-border bg-card max-w-2xl mx-auto">
+            <Card className="max-w-2xl mx-auto">
               <CardHeader>
                 <CardTitle>Submit Proof of Use</CardTitle>
                 <CardDescription>Log completed work to claim ARZY-G rewards.</CardDescription>
@@ -415,7 +415,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="analytics">
-            <Card className="border-border bg-card">
+            <Card>
               <CardHeader>
                 <CardTitle>Network Earnings Distribution</CardTitle>
                 <CardDescription>Total ARZY-G earned by top active agents.</CardDescription>
@@ -427,15 +427,16 @@ export default function Dashboard() {
                   <div className="h-[400px] w-full" data-testid="chart-earnings">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={agents.map(a => ({ name: a.name, earned: parseFloat(a.totalEarned) }))}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                        <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+                        <XAxis dataKey="name" stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
                         <Tooltip
-                          cursor={{fill: 'rgba(255,255,255,0.05)'}}
-                          contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px' }}
-                          itemStyle={{ color: '#00FF88' }}
+                          cursor={{fill: 'rgba(0,85,255,0.05)'}}
+                          contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}
+                          itemStyle={{ color: '#0055FF' }}
+                          labelStyle={{ color: '#1A1A1A' }}
                         />
-                        <Bar dataKey="earned" fill="#00FF88" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="earned" fill="#0055FF" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>

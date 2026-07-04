@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -69,63 +69,63 @@
 }
 
 :root {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  --button-outline: rgba(0, 0, 0, .10);
+  --badge-outline: rgba(0, 0, 0, .06);
   --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
+  --elevate-1: rgba(0, 0, 0, .03);
+  --elevate-2: rgba(0, 0, 0, .06);
 
-  /* Dark mode by default */
-  --background: 0 0% 4%;
-  --foreground: 0 0% 95%;
-  --border: 0 0% 15%;
-  
-  --card: 0 0% 6%;
-  --card-foreground: 0 0% 95%;
-  --card-border: 0 0% 15%;
-  
-  --popover: 0 0% 6%;
-  --popover-foreground: 0 0% 95%;
-  --popover-border: 0 0% 15%;
-  
-  --primary: 152 100% 50%;
-  --primary-foreground: 0 0% 0%;
-  
-  --secondary: 0 0% 15%;
-  --secondary-foreground: 0 0% 95%;
-  
-  --muted: 0 0% 12%;
-  --muted-foreground: 0 0% 65%;
-  
-  --accent: 152 100% 50%;
-  --accent-foreground: 0 0% 0%;
-  
-  --destructive: 0 100% 50%;
-  --destructive-foreground: 0 0% 95%;
-  
-  --input: 0 0% 20%;
-  --ring: 152 100% 50%;
-  
-  --chart-1: 152 100% 50%;
-  --chart-2: 190 90% 50%;
-  --chart-3: 280 80% 60%;
-  --chart-4: 45 90% 60%;
-  --chart-5: 0 0% 80%;
+  /* Light, institutional Web3/fintech theme (Chainlink / CoinDesk inspired) */
+  --background: 0 0% 100%;
+  --foreground: 0 0% 10%;
+  --border: 220 13% 91%;
 
-  --sidebar: 0 0% 6%;
-  --sidebar-foreground: 0 0% 95%;
-  --sidebar-border: 0 0% 15%;
-  --sidebar-primary: 152 100% 50%;
-  --sidebar-primary-foreground: 0 0% 0%;
-  --sidebar-accent: 0 0% 12%;
-  --sidebar-accent-foreground: 0 0% 95%;
-  --sidebar-ring: 152 100% 50%;
+  --card: 210 20% 98%;
+  --card-foreground: 0 0% 10%;
+  --card-border: 220 13% 91%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 10%;
+  --popover-border: 220 13% 91%;
+
+  --primary: 220 100% 50%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 20% 96%;
+  --secondary-foreground: 0 0% 10%;
+
+  --muted: 210 20% 96%;
+  --muted-foreground: 220 9% 46%;
+
+  --accent: 220 100% 50%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --input: 220 13% 91%;
+  --ring: 220 100% 50%;
+
+  --chart-1: 220 100% 50%;
+  --chart-2: 220 70% 65%;
+  --chart-3: 220 40% 78%;
+  --chart-4: 220 15% 88%;
+  --chart-5: 220 9% 46%;
+
+  --sidebar: 210 20% 98%;
+  --sidebar-foreground: 0 0% 10%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-primary: 220 100% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 210 20% 94%;
+  --sidebar-accent-foreground: 0 0% 10%;
+  --sidebar-ring: 220 100% 50%;
 
   --app-font-sans: 'Inter', sans-serif;
-  --app-font-display: 'Space Grotesk', sans-serif;
+  --app-font-display: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
-  --radius: 0.5rem;
+  --radius: 0.625rem;
 
   --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-accent-border: hsl(var(--sidebar-accent));
@@ -137,7 +137,7 @@
 }
 
 .dark {
-  /* Enforce dark mode variables identical to :root */
+  /* Light mode enforced everywhere: keep identical to :root */
 }
 
 @layer base {
@@ -148,8 +148,21 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
-  
+
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight;
+    @apply font-display font-extrabold tracking-tight text-foreground;
+  }
+
+  p {
+    @apply leading-relaxed;
+  }
+}
+
+@layer utilities {
+  .shadow-soft {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  }
+  .shadow-soft-lg {
+    box-shadow: 0 10px 20px -6px rgba(0, 0, 0, 0.08);
   }
 }

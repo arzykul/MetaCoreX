@@ -1,3 +1,4 @@
 - [pnpm workspace cwd in artifacts](pnpm-artifact-cwd.md) — process.cwd() inside artifact server = artifact dir, not workspace root; go up 2 levels.
 - [MetaCoreX Deployment State](metacorex-deployment.md) — live Sepolia addresses, secret status, pending Chainlink subscription + Etherscan verification; website shipped
 - [RPC eth_getLogs block-range limits](rpc-log-scan-limits.md) — anchor scans at deployment block + adaptive chunking; also handle 429 rate limits with backoff, never advance checkpoint on partial failure.
+- [runTest base path routing](testing-artifact-base-path.md) — always navigate to full artifact prefix (e.g. /metacorex-site/), bare "/" can hit unrelated legacy content.
