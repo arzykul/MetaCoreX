@@ -3,6 +3,14 @@ name: MetaCoreX Deployment State
 description: Live deployment addresses, secrets, and project status for MetaCoreX / ARZY-G
 ---
 
+## No generic mint(address, uint256) exists — any "mint to X" script must use submitProof
+
+`ARZYG_ERC20_AI` has no `mint(address to, uint256 amount)`-style function callable by an arbitrary wallet. The only permissionless mint path is `submitProof(proof, amount, score)`, and it **always mints to msg.sender** — there is no way to direct the reward to a different address without going through the oracle-gated `requestUsefulness` -> Chainlink Functions -> `birthToken` path (which requires `DEV_ADMIN_ROLE` to initiate and only the Chainlink router can fulfill).
+
+**Why:** A user asked for a script where a "validator" wallet scores work and mints tokens to a separate "executor" address, assuming a generic mint function existed (common assumption, not true here — see replit.md's "no mint/burn" gotcha). Building against an imagined ABI would have silently reverted on-chain (selector mismatch).
+
+**How to apply:** For any future script that needs to "reward" an address based on an off-chain judgment (AI score, admin approval, etc.), either (a) call `submitProof` from the wallet that should receive the reward directly (the rewarded party signs), or (b) have the rewarding wallet call `submitProof` and accept that the reward lands in *that* wallet's own balance — record the intended beneficiary only in the proof string/off-chain DB, not as an on-chain transfer target. Don't invent a `mint(address, uint256)` ABI entry; it doesn't exist on the deployed contract.
+
 ## Sepolia Deployment (LIVE)
 
 - **ARZYG_ERC20_AI**: `0xC3f4231F619F8D22666d70aeaA5D43EA56498770` (v2.2, redeployed 2026-07-05 — supersedes the old `0xdd378e...` address, which has no supply caps and should be treated as retired/unsafe)

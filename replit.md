@@ -9,6 +9,7 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 - `pnpm --filter @workspace/contracts run node` — start a local Hardhat EVM node
 - `pnpm --filter @workspace/contracts run deploy:local` — deploy to local Hardhat node
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/scripts run agent:validator` — score a test executor report with Gemini and mint ARZY-G on-chain if PoU Score ≥ 7 (`scripts/src/validator-agent.ts`)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - Required env: `DATABASE_URL` — Postgres connection string (for API server)
