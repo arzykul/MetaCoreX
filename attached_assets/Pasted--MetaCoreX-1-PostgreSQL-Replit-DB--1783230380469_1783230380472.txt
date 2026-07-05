@@ -1,0 +1,156 @@
+Создай полноценную систему задач для агентов MetaCoreX.
+
+**1. БАЗА ДАННЫХ (PostgreSQL / Replit DB):**
+
+Создай таблицу `tasks`:
+- id: VARCHAR(36) PRIMARY KEY (UUID)
+- title: TEXT NOT NULL
+- description: TEXT
+- reward: DECIMAL(20,2) NOT NULL (в ARZY-G)
+- status: VARCHAR(20) DEFAULT 'pending' (pending | assigned | completed | verified | cancelled)
+- agent_address: VARCHAR(42) (адрес агента, кто взял задачу)
+- created_by: VARCHAR(42) NOT NULL (кто создал)
+- proof: TEXT (доказательство выполнения)
+- assigned_at: TIMESTAMP
+- completed_at: TIMESTAMP
+- verified_at: TIMESTAMP
+- created_at: TIMESTAMP DEFAULT NOW()
+
+Создай таблицу `task_history` для аудита:
+- id: SERIAL PRIMARY KEY
+- task_id: VARCHAR(36) REFERENCES tasks(id)
+- action: VARCHAR(20) (created | assigned | completed | verified | cancelled)
+- actor: VARCHAR(42)
+- timestamp: TIMESTAMP DEFAULT NOW()
+
+**2. API ЭНДПОИНТЫ (artifacts/api-server/src/routes/tasks.ts):**
+
+Создай файл и добавь эндпоинты:
+
+// GET /api/tasks/list - список всех задач
+// Параметры: ?status=pending&limit=10&offset=0
+// Ответ: { tasks: [...], total: 0 }
+
+// GET /api/tasks/:id - детали задачи
+// Ответ: { task: {...} }
+
+// POST /api/tasks/create - создать задачу
+// Тело: { title, description, reward, privateKey }
+// Ответ: { success: true, taskId: '...' }
+
+// POST /api/tasks/assign/:id - взять задачу
+// Тело: { agentAddress, privateKey }
+// Ответ: { success: true, message: 'Task assigned' }
+
+// POST /api/tasks/complete/:id - завершить задачу
+// Тело: { proof, privateKey }
+// Ответ: { success: true, reward: 100, newBalance: '...' }
+
+// POST /api/tasks/verify/:id - верифицировать задачу (для админов)
+// Тело: { verified: true/false, privateKey }
+// Ответ: { success: true }
+
+// GET /api/tasks/my/:agentAddress - задачи текущего агента
+// Ответ: { tasks: [...] }
+
+// GET /api/tasks/stats - статистика задач
+// Ответ: { total: 0, pending: 0, completed: 0, totalReward: 0 }
+
+**3. ЛОГИКА РАБОТЫ:**
+
+При создании задачи:
+- Проверка: reward > 0
+- Сохраняем в БД со статусом 'pending'
+
+При взятии задачи:
+- Проверка: статус 'pending'
+- Проверка: агент зарегистрирован (проверяем контракт)
+- Обновляем статус на 'assigned'
+- Записываем agent_address и assigned_at
+
+При завершении задачи:
+- Проверка: статус 'assigned'
+- Проверка: агент == agent_address
+- Проверка: proof не пустой
+- Обновляем статус на 'completed'
+- Сохраняем proof и completed_at
+- Вызываем submitProof в контракте
+- Награда отправляется агенту через контракт
+
+При верификации (админ):
+- Проверка: статус 'completed'
+- Обновляем статус на 'verified'
+- Награда уже выплачена, просто маркируем как верифицированную
+
+**4. ИНТЕГРАЦИЯ СО СМАРТ-КОНТРАКТОМ:**
+
+При завершении задачи:
+1. Вызываем contract.submitProof(proof, task.reward, 8)
+2. Получаем reward = (task.reward * 8) / 10
+3. Показываем агенту: "Задача выполнена! Награда: X ARZY-G"
+
+**5. ДАШБОРД (Новые страницы):**
+
+**Страница /tasks (вкладка Tasks в навигации):**
+
+Разделы:
+- Available Tasks (все pending задачи)
+- My Tasks (задачи текущего агента)
+- Completed Tasks (выполненные)
+
+Каждая задача в списке:
+- Карточка с названием, описанием, наградой
+- Статус: 📋 Available / 🔄 In Progress / ✅ Completed
+- Кнопка: "Assign to Me" (если статус pending)
+- Кнопка: "Complete Task" (если статус assigned)
+
+**Модальное окно "Create Task":**
+- Название (обязательно)
+- Описание (обязательно)
+- Награда (число, обязательно)
+- Приватный ключ (для подписи)
+- Кнопка "Create Task"
+
+**Модальное окно "Complete Task":**
+- Текст доказательства (обязательно)
+- Кнопка "Submit Proof"
+
+**6. НАВИГАЦИЯ:**
+Добавь в шапку сайта новую ссылку: "Tasks" между "Submit Proof" и "Analytics"
+
+**7. ВИЗУАЛЬНЫЙ СТИЛЬ:**
+- Белый фон, синий акцент #0055FF
+- Карточки задач с тенью
+- Статусы цветные: 
+  - pending: #F59E0B (желтый)
+  - assigned: #3B82F6 (синий)
+  - completed: #10B981 (зеленый)
+  - verified: #10B981 + галочка
+
+**8. ДОПОЛНИТЕЛЬНО:**
+- WebSocket уведомления о новых задачах
+- При создании задачи → событие в ленте
+- При выполнении → событие в ленте
+- Сортировка: по награде (высокие → низкие), по дате
+- Пагинация: 10 задач на страницу
+
+**9. ТЕСТОВЫЕ ДАННЫЕ (добавить при старте):**
+
+Создай 5 примеров задач для демонстрации:
+1. "Анализ рынка ETH" - 100 ARZY-G - pending
+2. "Генерация отчета по активности" - 50 ARZY-G - pending
+3. "Мониторинг газа за час" - 30 ARZY-G - assigned
+4. "Проверка нового контракта" - 150 ARZY-G - pending
+5. "Сбор твитов о проекте" - 20 ARZY-G - pending
+
+**10. ОШИБКИ:**
+- Если нет агентов → "No agents registered. Register your first agent."
+- Если нет задач → "No tasks available. Create one!"
+- Если ошибка API → показывать понятное сообщение
+- Если нет приватного ключа → запросить через форму
+
+**ВСЕ ИЗМЕНЕНИЯ ДОЛЖНЫ СОХРАНЯТЬ:**
+- Белый фон, синий акцент #0055FF
+- Шрифт Inter
+- Адаптивность
+- Существующую функциональность

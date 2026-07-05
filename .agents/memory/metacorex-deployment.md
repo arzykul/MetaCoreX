@@ -49,6 +49,14 @@ Generates its own wallet on first run and persists it to a gitignored local JSON
 
 **How to apply:** Before any production deployment, auth-gate or localhost-restrict these routes rather than exposing raw-private-key endpoints publicly.
 
+## API server needs top-level unhandledRejection/uncaughtException handlers
+
+`contractService`'s background ethers.js event polling/RPC calls can reject when the free-tier Sepolia RPC (Alchemy) rate-limits (429) or times out. Without a top-level `process.on("unhandledRejection"/"uncaughtException")` handler, this crashes the whole Node process, taking down every route (not just chain-related ones) until the platform respawns it — surfaces as transient 502s across the app.
+
+**Why:** Discovered via flaky e2e test failures on an unrelated feature (Tasks page) that were actually caused by the API server randomly restarting mid-session; `artifacts/api-server/src/index.ts` had no global error handlers.
+
+**How to apply:** Keep the `index.ts` top-level handlers (log via `logger`, don't exit) in place; if the server ever needs to hard-exit on a truly fatal error, do it explicitly rather than relying on an unhandled rejection to crash it.
+
 ## Pending Work
 
 1. **Chainlink Subscription** — user has LINK + ETH on deployer wallet; needs to create subscription at functions.chain.link/sepolia, fund it, add the contract as consumer, then add `CHAINLINK_SUBSCRIPTION_ID` to Replit Secrets. Programmatic creation is blocked by Chainlink ToS (must use web UI first).

@@ -10,7 +10,11 @@ export type McxEventType =
   | "SystemMessage"
   | "AgentRegistered"
   | "ProofAccepted"
-  | "ProofRejected";
+  | "ProofRejected"
+  | "TaskCreated"
+  | "TaskAssigned"
+  | "TaskCompleted"
+  | "TaskVerified";
 
 export interface McxEvent {
   type: McxEventType;

@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import {
   BarChart3,
   BookOpen,
+  ClipboardList,
   Cpu,
   FileCheck,
   HelpCircle,
@@ -20,6 +21,7 @@ const navLinks = [
   { label: "Home", href: "/", icon: Home },
   { label: "Agents", href: "/dashboard?tab=agents", icon: Users },
   { label: "Submit Proof", href: "/dashboard?tab=proof", icon: FileCheck },
+  { label: "Tasks", href: "/tasks", icon: ClipboardList },
   { label: "Analytics", href: "/dashboard?tab=analytics", icon: BarChart3 },
   { label: "FAQ", href: "/faq", icon: HelpCircle },
   { label: "Blog", href: "/blog", icon: Newspaper },

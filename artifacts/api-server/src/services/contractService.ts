@@ -276,6 +276,59 @@ class ContractService {
     return { txHash: receipt?.hash ?? tx.hash, accepted, reward, reason };
   }
 
+  /**
+   * Fetches a transaction receipt and parses it for ProofAccepted/ProofRejected
+   * logs scoped to `expectedAgent`. Used to verify a client-signed submitProof
+   * transaction (from the agent-tasks "complete" flow) actually happened
+   * on-chain and paid the expected agent, instead of trusting a client-supplied
+   * reward value.
+   */
+  async verifyProofTx(
+    txHash: string,
+    expectedAgent: string
+  ): Promise<{ accepted: boolean; reward?: string; reason?: string } | null> {
+    if (!this._connected || !this.token || !this.provider) {
+      return null;
+    }
+
+    const receipt = await this.provider.getTransactionReceipt(txHash);
+    if (!receipt) return null;
+
+    let accepted = false;
+    let reward: string | undefined;
+    let reason: string | undefined;
+
+    for (const log of receipt.logs) {
+      let parsed: ethers.LogDescription | null = null;
+      try {
+        parsed = this.token.interface.parseLog(log);
+      } catch {
+        continue;
+      }
+      if (!parsed) continue;
+
+      const agent = parsed.args.agent as string | undefined;
+      if (!agent || agent.toLowerCase() !== expectedAgent.toLowerCase()) continue;
+
+      if (parsed.name === "ProofAccepted") {
+        accepted = true;
+        reward = (parsed.args.reward as bigint).toString();
+      } else if (parsed.name === "ProofRejected") {
+        accepted = false;
+        reason = parsed.args.reason as string;
+      }
+    }
+
+    return { accepted, reward, reason };
+  }
+
+  /** Reads a live ARZY-G token balance for an address. */
+  async getBalance(address: string): Promise<string | null> {
+    if (!this._connected || !this.token) return null;
+    const bal = await this.token.balanceOf(address);
+    return ethers.formatEther(bal);
+  }
+
   async getAgentInfo(address: string): Promise<AgentInfo | null> {
     if (!this._connected || !this.token) {
       return null;

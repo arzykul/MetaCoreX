@@ -109,3 +109,118 @@ export async function getAgent(address: string): Promise<AgentInfo> {
 // scripts/src/auto-agent.ts) but are intentionally not called from this
 // public-facing site, since collecting a raw private key in a web form is
 // not an appropriate pattern for a public site.
+
+// ─── Agent Tasks (on-chain bounty marketplace) ─────────────────────────────
+// Mounted at /api/agent-tasks/* on the API server — distinct from /api/tasks,
+// which is an unrelated personal-agent to-do feature. Completing a task
+// mints a reward via submitProof, so — same rule as above — that transaction
+// is always signed client-side by the agent's connected wallet; this API
+// only verifies the resulting txHash and persists the outcome.
+
+export type TaskStatus = "pending" | "assigned" | "completed" | "verified" | "cancelled";
+
+export interface AgentTask {
+  id: string;
+  title: string;
+  description: string | null;
+  reward: number;
+  status: TaskStatus;
+  agentAddress: string | null;
+  createdBy: string;
+  proof: string | null;
+  txHash: string | null;
+  assignedAt: string | null;
+  completedAt: string | null;
+  verifiedAt: string | null;
+  createdAt: string;
+}
+
+export interface TaskStats {
+  total: number;
+  pending: number;
+  assigned: number;
+  completed: number;
+  totalReward: number;
+}
+
+export interface ListTasksParams {
+  status?: TaskStatus | TaskStatus[];
+  limit?: number;
+  offset?: number;
+  sortBy?: "reward" | "date";
+  order?: "asc" | "desc";
+}
+
+/** GET /api/agent-tasks/list */
+export async function listTasks(
+  params: ListTasksParams = {},
+): Promise<{ tasks: AgentTask[]; total: number }> {
+  const search = new URLSearchParams();
+  if (params.status) {
+    search.set("status", Array.isArray(params.status) ? params.status.join(",") : params.status);
+  }
+  if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.offset != null) search.set("offset", String(params.offset));
+  if (params.sortBy) search.set("sortBy", params.sortBy);
+  if (params.order) search.set("order", params.order);
+  const qs = search.toString();
+  return apiFetch<{ ok: boolean; tasks: AgentTask[]; total: number }>(
+    `/api/agent-tasks/list${qs ? `?${qs}` : ""}`,
+  );
+}
+
+/** GET /api/agent-tasks/stats */
+export function getTaskStats(): Promise<TaskStats> {
+  return apiFetch<TaskStats>("/api/agent-tasks/stats");
+}
+
+/** GET /api/agent-tasks/my/:agentAddress */
+export async function getMyTasks(agentAddress: string): Promise<AgentTask[]> {
+  const data = await apiFetch<{ ok: boolean; tasks: AgentTask[] }>(
+    `/api/agent-tasks/my/${agentAddress}`,
+  );
+  return data.tasks;
+}
+
+/** POST /api/agent-tasks/create */
+export async function createTask(input: {
+  title: string;
+  description?: string;
+  reward: number;
+  createdBy: string;
+}): Promise<AgentTask> {
+  const data = await apiFetch<{ ok: boolean; task: AgentTask }>("/api/agent-tasks/create", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.task;
+}
+
+/** POST /api/agent-tasks/assign/:id */
+export async function assignTask(id: string, agentAddress: string): Promise<AgentTask> {
+  const data = await apiFetch<{ ok: boolean; task: AgentTask }>(`/api/agent-tasks/assign/${id}`, {
+    method: "POST",
+    body: JSON.stringify({ agentAddress }),
+  });
+  return data.task;
+}
+
+/** POST /api/agent-tasks/complete/:id — call only after the wallet-signed submitProof tx confirms. */
+export async function completeTask(
+  id: string,
+  input: { agentAddress: string; proof: string; txHash: string },
+): Promise<{ task: AgentTask; reward: string | null; newBalance: string | null }> {
+  return apiFetch<{ ok: boolean; task: AgentTask; reward: string | null; newBalance: string | null }>(
+    `/api/agent-tasks/complete/${id}`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+/** POST /api/agent-tasks/verify/:id */
+export async function verifyTask(id: string, verified: boolean): Promise<AgentTask> {
+  const data = await apiFetch<{ ok: boolean; task: AgentTask }>(`/api/agent-tasks/verify/${id}`, {
+    method: "POST",
+    body: JSON.stringify({ verified }),
+  });
+  return data.task;
+}
