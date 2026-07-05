@@ -61,11 +61,11 @@ import {
 const PAGE_SIZE = 6;
 
 const STATUS_META: Record<TaskStatus, { label: string; className: string }> = {
-  pending: { label: "Открыта", className: "bg-amber-500/10 text-amber-600 border-amber-500/30" },
-  assigned: { label: "Назначена", className: "bg-blue-500/10 text-blue-600 border-blue-500/30" },
-  completed: { label: "Выполнена", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" },
-  verified: { label: "Проверена", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" },
-  cancelled: { label: "Отменена", className: "bg-gray-500/10 text-gray-500 border-gray-500/30" },
+  pending: { label: "Available", className: "bg-amber-500/10 text-amber-600 border-amber-500/30" },
+  assigned: { label: "In Progress", className: "bg-blue-500/10 text-blue-600 border-blue-500/30" },
+  completed: { label: "Completed", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" },
+  verified: { label: "Verified", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" },
+  cancelled: { label: "Cancelled", className: "bg-gray-500/10 text-gray-500 border-gray-500/30" },
 };
 
 function StatusBadge({ status }: { status: TaskStatus }) {
@@ -82,7 +82,7 @@ function ConnectWalletPrompt({ label }: { label: string }) {
   return (
     <div className="text-center py-12 border border-dashed border-border rounded-lg bg-background">
       <Wallet className="w-12 h-12 text-primary mx-auto mb-4 opacity-70" />
-      <h3 className="text-lg font-semibold text-foreground mb-1">Подключите кошелёк</h3>
+      <h3 className="text-lg font-semibold text-foreground mb-1">Connect Wallet</h3>
       <p className="text-sm text-muted-foreground mb-4">{label}</p>
       <div className="flex flex-wrap gap-2 justify-center">
         {connectors.map((connector) => (
@@ -92,7 +92,7 @@ function ConnectWalletPrompt({ label }: { label: string }) {
             onClick={() => connect({ connector })}
             data-testid={`btn-connect-inline-${connector.id}`}
           >
-            Подключить {connector.name}
+            Connect {connector.name}
           </Button>
         ))}
       </div>
@@ -116,18 +116,18 @@ function CreateTaskDialog({ createdBy }: { createdBy: Address }) {
     e.preventDefault();
     const rewardNum = Number(reward);
     if (!title.trim() || !Number.isFinite(rewardNum) || rewardNum <= 0) {
-      toast({ variant: "destructive", title: "Проверьте данные", description: "Название и награда (> 0) обязательны." });
+      toast({ variant: "destructive", title: "Check your input", description: "Title and reward (> 0) are required." });
       return;
     }
     try {
       await createTask.mutateAsync({ title: title.trim(), description: description.trim() || undefined, reward: rewardNum, createdBy });
-      toast({ title: "Задача создана", description: `«${title.trim()}» добавлена в список доступных задач.` });
+      toast({ title: "Task created", description: `"${title.trim()}" was added to the list of available tasks.` });
       setTitle("");
       setDescription("");
       setReward("");
       setOpen(false);
     } catch (err: unknown) {
-      toast({ variant: "destructive", title: "Не удалось создать задачу", description: err instanceof Error ? err.message : String(err) });
+      toast({ variant: "destructive", title: "Failed to create task", description: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -136,30 +136,30 @@ function CreateTaskDialog({ createdBy }: { createdBy: Address }) {
       <DialogTrigger asChild>
         <Button data-testid="btn-open-create-task">
           <PlusCircle className="w-4 h-4 mr-2" />
-          Создать задачу
+          Create Task
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Новая задача</DialogTitle>
-          <DialogDescription>Опубликуйте задачу для агентов сети MetaCoreX. Награда выплачивается в ARZY-G после подтверждения выполнения.</DialogDescription>
+          <DialogTitle>Create New Task</DialogTitle>
+          <DialogDescription>Publish a task for MetaCoreX network agents. The reward is paid in ARZY-G once completion is verified.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="task-title">Название</Label>
-            <Input id="task-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например, Анализ рынка ETH" required data-testid="input-task-title" />
+            <Label htmlFor="task-title">Title</Label>
+            <Input id="task-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. ETH Market Analysis" required data-testid="input-task-title" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="task-description">Описание</Label>
-            <Textarea id="task-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Что нужно сделать" rows={3} data-testid="input-task-description" />
+            <Label htmlFor="task-description">Description</Label>
+            <Textarea id="task-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What needs to be done" rows={3} data-testid="input-task-description" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="task-reward">Награда (ARZY-G)</Label>
+            <Label htmlFor="task-reward">Reward (ARZY-G)</Label>
             <Input id="task-reward" type="number" min="0" step="any" value={reward} onChange={(e) => setReward(e.target.value)} placeholder="100" required data-testid="input-task-reward" />
           </div>
           <DialogFooter>
             <Button type="submit" className="w-full" disabled={createTask.isPending} data-testid="btn-submit-create-task">
-              {createTask.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Создание...</> : "Создать задачу"}
+              {createTask.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating...</> : "Create Task"}
             </Button>
           </DialogFooter>
         </form>
@@ -200,19 +200,19 @@ function CompleteTaskDialog({ task, agentAddress, contractAddress }: { task: Age
   useEffect(() => {
     if (!isConfirmed || !txHash) return;
     if (outcome && !outcome.accepted) {
-      toast({ variant: "destructive", title: "Доказательство отклонено", description: outcome.reason ?? "Транзакция была отклонена контрактом." });
+      toast({ variant: "destructive", title: "Proof rejected", description: outcome.reason ?? "The transaction was rejected by the contract." });
       return;
     }
     completeTask
       .mutateAsync({ id: task.id, agentAddress, proof, txHash })
       .then(() => {
-        toast({ title: "Задача выполнена", description: "Награда начислена на ваш баланс." });
+        toast({ title: "Task completed", description: "The reward has been credited to your balance." });
         setOpen(false);
         setProof("");
         resetWrite();
       })
       .catch((err: unknown) => {
-        toast({ variant: "destructive", title: "Не удалось подтвердить выполнение", description: err instanceof Error ? err.message : String(err) });
+        toast({ variant: "destructive", title: "Failed to confirm completion", description: err instanceof Error ? err.message : String(err) });
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConfirmed, txHash]);
@@ -234,23 +234,23 @@ function CompleteTaskDialog({ task, agentAddress, contractAddress }: { task: Age
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" data-testid={`btn-open-complete-${task.id}`}>Завершить задачу</Button>
+        <Button size="sm" data-testid={`btn-open-complete-${task.id}`}>Complete Task</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Завершить: {task.title}</DialogTitle>
+          <DialogTitle>Complete: {task.title}</DialogTitle>
           <DialogDescription>
-            Подтверждение подписывается вашим кошельком через <span className="font-mono">submitProof</span> — награда {task.reward} ARZY-G будет начислена автоматически при принятии.
+            Confirmation is signed with your wallet via <span className="font-mono">submitProof</span> — the {task.reward} ARZY-G reward will be credited automatically once accepted.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="proof-input">Доказательство выполнения</Label>
+            <Label htmlFor="proof-input">Proof (describe the work done)</Label>
             <Textarea
               id="proof-input"
               value={proof}
               onChange={(e) => setProof(e.target.value)}
-              placeholder="IPFS-хеш, ссылка на отчёт или другое подтверждение"
+              placeholder="IPFS hash, report link, or other verification"
               rows={3}
               required
               data-testid="input-complete-proof"
@@ -259,18 +259,18 @@ function CompleteTaskDialog({ task, agentAddress, contractAddress }: { task: Age
 
           {writeError && (
             <div className="text-sm text-red-500 bg-red-500/10 p-3 rounded" data-testid="alert-complete-error">
-              Ошибка: {writeError.message}
+              Error: {writeError.message}
             </div>
           )}
           {completeTask.isError && (
             <div className="text-sm text-red-500 bg-red-500/10 p-3 rounded" data-testid="alert-complete-server-error">
-              {completeTask.error instanceof Error ? completeTask.error.message : "Не удалось завершить задачу"}
+              {completeTask.error instanceof Error ? completeTask.error.message : "Failed to complete task"}
             </div>
           )}
 
           <DialogFooter>
             <Button type="submit" className="w-full" disabled={busy || !contractAddress} data-testid="btn-submit-complete">
-              {isSigning ? "Подтвердите в кошельке..." : isConfirming ? "Подтверждение транзакции..." : completeTask.isPending ? "Сохранение..." : "Отправить доказательство"}
+              {isSigning ? "Confirm in wallet..." : isConfirming ? "Confirming transaction..." : completeTask.isPending ? "Saving..." : "Submit Proof"}
             </Button>
           </DialogFooter>
         </form>
@@ -307,10 +307,10 @@ function AvailableTaskCard({ task, isConnected, address, onAssign, isAssigning }
         </div>
         {isConnected ? (
           <Button size="sm" variant="outline" onClick={() => onAssign(task.id)} disabled={isAssigning} data-testid={`btn-assign-${task.id}`}>
-            {isAssigning ? <Loader2 className="w-4 h-4 animate-spin" /> : "Взять в работу"}
+            {isAssigning ? <Loader2 className="w-4 h-4 animate-spin" /> : "Assign to Me"}
           </Button>
         ) : (
-          <span className="text-xs text-muted-foreground">Подключите кошелёк</span>
+          <span className="text-xs text-muted-foreground">Connect Wallet</span>
         )}
       </div>
     </TaskCard>
@@ -465,9 +465,9 @@ export default function Tasks() {
     if (!address) return;
     try {
       await assignTask.mutateAsync({ id, agentAddress: address });
-      toast({ title: "Задача назначена", description: "Теперь она доступна во вкладке «Мои задачи»." });
+      toast({ title: "Task assigned", description: "It's now available in the My Tasks tab." });
     } catch (err: unknown) {
-      toast({ variant: "destructive", title: "Не удалось назначить задачу", description: err instanceof Error ? err.message : String(err) });
+      toast({ variant: "destructive", title: "Failed to assign task", description: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -478,36 +478,36 @@ export default function Tasks() {
       <main className="flex-1 pt-24 pb-12 container mx-auto px-4 max-w-7xl">
         <div className="flex flex-col md:flex-row items-start justify-between mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-bold font-display tracking-tight text-foreground mb-2" data-testid="text-page-title">Задачи</h1>
-            <p className="text-muted-foreground">Маркетплейс задач для автономных агентов MetaCoreX — выполняйте задачи и получайте ARZY-G.</p>
+            <h1 className="text-3xl font-bold font-display tracking-tight text-foreground mb-2" data-testid="text-page-title">Task Marketplace</h1>
+            <p className="text-muted-foreground">Task marketplace for autonomous MetaCoreX agents — complete tasks and earn ARZY-G.</p>
           </div>
           {isConnected && address ? (
             <CreateTaskDialog createdBy={address} />
           ) : (
             <Button disabled data-testid="btn-create-task-disabled">
-              <PlusCircle className="w-4 h-4 mr-2" /> Подключите кошелёк
+              <PlusCircle className="w-4 h-4 mr-2" /> Connect Wallet
             </Button>
           )}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card><CardContent className="pt-6"><div className="text-2xl font-bold text-foreground" data-testid="text-stat-total">{stats?.total ?? "–"}</div><div className="text-xs text-muted-foreground">Всего задач</div></CardContent></Card>
-          <Card><CardContent className="pt-6"><div className="text-2xl font-bold text-amber-600" data-testid="text-stat-pending">{stats?.pending ?? "–"}</div><div className="text-xs text-muted-foreground">Открыто</div></CardContent></Card>
-          <Card><CardContent className="pt-6"><div className="text-2xl font-bold text-blue-600" data-testid="text-stat-assigned">{stats?.assigned ?? "–"}</div><div className="text-xs text-muted-foreground">В работе</div></CardContent></Card>
-          <Card><CardContent className="pt-6"><div className="text-2xl font-bold text-emerald-600" data-testid="text-stat-reward">{stats?.totalReward ?? "–"}</div><div className="text-xs text-muted-foreground">ARZY-G выплачено</div></CardContent></Card>
+          <Card><CardContent className="pt-6"><div className="text-2xl font-bold text-foreground" data-testid="text-stat-total">{stats?.total ?? "–"}</div><div className="text-xs text-muted-foreground">Total Tasks</div></CardContent></Card>
+          <Card><CardContent className="pt-6"><div className="text-2xl font-bold text-amber-600" data-testid="text-stat-pending">{stats?.pending ?? "–"}</div><div className="text-xs text-muted-foreground">Open</div></CardContent></Card>
+          <Card><CardContent className="pt-6"><div className="text-2xl font-bold text-blue-600" data-testid="text-stat-assigned">{stats?.assigned ?? "–"}</div><div className="text-xs text-muted-foreground">In Progress</div></CardContent></Card>
+          <Card><CardContent className="pt-6"><div className="text-2xl font-bold text-emerald-600" data-testid="text-stat-reward">{stats?.totalReward ?? "–"}</div><div className="text-xs text-muted-foreground">ARZY-G Paid</div></CardContent></Card>
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <TabsList className="bg-card w-full sm:w-auto justify-start h-auto p-1 overflow-x-auto flex-nowrap shrink-0">
               <TabsTrigger value="available" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-available">
-                <ClipboardList className="w-4 h-4 mr-2" /> Доступные
+                <ClipboardList className="w-4 h-4 mr-2" /> Available
               </TabsTrigger>
               <TabsTrigger value="my" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-my">
-                <User className="w-4 h-4 mr-2" /> Мои задачи
+                <User className="w-4 h-4 mr-2" /> My Tasks
               </TabsTrigger>
               <TabsTrigger value="completed" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-completed">
-                <ListChecks className="w-4 h-4 mr-2" /> Выполненные
+                <ListChecks className="w-4 h-4 mr-2" /> Completed
               </TabsTrigger>
             </TabsList>
 
@@ -516,15 +516,15 @@ export default function Tasks() {
                 <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
                   <SelectTrigger className="w-[130px]" data-testid="select-sort-by"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="date">По дате</SelectItem>
-                    <SelectItem value="reward">По награде</SelectItem>
+                    <SelectItem value="date">Date</SelectItem>
+                    <SelectItem value="reward">Reward</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={order} onValueChange={(v) => setOrder(v as typeof order)}>
                   <SelectTrigger className="w-[110px]" data-testid="select-sort-order"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="desc">Убыв.</SelectItem>
-                    <SelectItem value="asc">Возр.</SelectItem>
+                    <SelectItem value="desc">Desc</SelectItem>
+                    <SelectItem value="asc">Asc</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -535,7 +535,7 @@ export default function Tasks() {
             {isLoadingAvailable ? (
               <SkeletonGrid />
             ) : !availableData || availableData.tasks.length === 0 ? (
-              <EmptyState icon={ClipboardList} title="Нет доступных задач" description="Все задачи разобраны или ещё не созданы. Создайте новую!" />
+              <EmptyState icon={ClipboardList} title="No tasks available" description="All tasks have been taken or none have been created yet. Create your first task!" />
             ) : (
               <>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -557,11 +557,11 @@ export default function Tasks() {
 
           <TabsContent value="my" className="space-y-4">
             {!isConnected || !address ? (
-              <ConnectWalletPrompt label="Подключите кошелёк, чтобы увидеть свои задачи." />
+              <ConnectWalletPrompt label="Connect your wallet to see your tasks." />
             ) : isLoadingMy ? (
               <SkeletonGrid />
             ) : myTasks.length === 0 ? (
-              <EmptyState icon={User} title="У вас пока нет задач" description="Возьмите задачу во вкладке «Доступные», чтобы начать зарабатывать ARZY-G." />
+              <EmptyState icon={User} title="You don't have any tasks yet" description="Assign a task from the Available tab to start earning ARZY-G." />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {myTasks.map((task) => (
@@ -575,7 +575,7 @@ export default function Tasks() {
             {isLoadingCompleted ? (
               <SkeletonGrid />
             ) : !completedData || completedData.tasks.length === 0 ? (
-              <EmptyState icon={ListChecks} title="Пока нет выполненных задач" description="Здесь появятся задачи после подтверждения выполнения." />
+              <EmptyState icon={ListChecks} title="No completed tasks yet" description="Tasks will appear here once their completion is verified." />
             ) : (
               <>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

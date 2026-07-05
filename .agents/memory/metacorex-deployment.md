@@ -49,6 +49,14 @@ Generates its own wallet on first run and persists it to a gitignored local JSON
 
 **How to apply:** Before any production deployment, auth-gate or localhost-restrict these routes rather than exposing raw-private-key endpoints publicly.
 
+## Seed data lives in both code and the already-migrated DB
+
+`seedAgentTasksIfEmpty()` (and similar seed functions) only insert rows once, when the target table is empty. Once seeded, editing the seed array in code has zero effect on existing rows — any later content change (e.g. re-translating task titles) requires a direct DB update/insert against the live rows, not just a source-file edit.
+
+**Why:** Had to re-translate already-seeded `agent_tasks` rows from Russian back to English; changing `SEED_TASKS` in `seedAgentTasks.ts` alone did nothing since the table already had 5+ rows.
+
+**How to apply:** When "fixing" or "translating" seed content post-launch, always check whether the table is already populated (`SELECT count(*) FROM <table>`) and update live rows via `psql "$DATABASE_URL"` (or a drizzle script) in addition to updating the seed source for future fresh installs. Note `agent_tasks.id` has no DB-level default (Drizzle generates it via `randomUUID()` app-side), so manual INSERTs need an explicit id.
+
 ## API server needs top-level unhandledRejection/uncaughtException handlers
 
 `contractService`'s background ethers.js event polling/RPC calls can reject when the free-tier Sepolia RPC (Alchemy) rate-limits (429) or times out. Without a top-level `process.on("unhandledRejection"/"uncaughtException")` handler, this crashes the whole Node process, taking down every route (not just chain-related ones) until the platform respawns it — surfaces as transient 502s across the app.

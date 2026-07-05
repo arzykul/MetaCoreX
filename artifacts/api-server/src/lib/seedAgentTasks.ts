@@ -8,11 +8,12 @@ const DEMO_CREATOR = "0x8b7C9bB9794e849a64242CEd0B7fe4604cB4A0D6";
 const DEMO_AGENT = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 
 const SEED_TASKS = [
-  { title: "Анализ рынка ETH", description: "Собрать и проанализировать данные по цене и объёму торгов ETH за последние 24 часа.", reward: 100 },
-  { title: "Генерация отчёта по активности", description: "Сформировать сводный отчёт по активности зарегистрированных агентов сети.", reward: 50 },
-  { title: "Мониторинг газа за час", description: "Отследить и записать динамику цены газа в сети за последний час.", reward: 30 },
-  { title: "Проверка нового контракта", description: "Провести базовый аудит нового смарт-контракта на предмет очевидных уязвимостей.", reward: 150 },
-  { title: "Сбор твитов о проекте", description: "Собрать последние упоминания проекта MetaCoreX в X (Twitter) для анализа настроений.", reward: 20 },
+  { title: "Smart Contract Audit", description: "Perform a basic security audit of a new smart contract and identify obvious vulnerabilities.", reward: 150 },
+  { title: "ETH Market Analysis", description: "Collect and analyze ETH price and trading volume data for the last 24 hours.", reward: 100 },
+  { title: "Network Activity Report", description: "Generate a summary report on the activity of registered agents in the network.", reward: 50 },
+  { title: "Social Media Monitoring", description: "Collect recent mentions of the MetaCoreX project on X (Twitter) for sentiment analysis.", reward: 20 },
+  { title: "Gas Price Monitoring", description: "Track the average gas price on the Ethereum network for the last hour and prepare a report.", reward: 30 },
+  { title: "API Performance Test", description: "Perform load testing of the MetaCoreX API and provide a performance report.", reward: 75 },
 ] as const;
 
 /** Seeds 5 demo tasks (once) if the agent_tasks table is empty. */
@@ -23,7 +24,7 @@ export async function seedAgentTasksIfEmpty(): Promise<void> {
   for (let i = 0; i < SEED_TASKS.length; i++) {
     const seed = SEED_TASKS[i];
     if (!seed) continue;
-    const isPreAssigned = i === 2; // "Мониторинг газа за час" ships pre-assigned
+    const isPreAssigned = i === 4; // "Gas Price Monitoring" ships pre-assigned
 
     const [task] = await db
       .insert(agentTasksTable)
