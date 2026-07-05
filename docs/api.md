@@ -47,7 +47,7 @@ Backed by Postgres (`agent_tasks`, `agent_task_history`). Mounted at `/api/agent
 | `GET` | `/api/agent-tasks/:id` | Single task. |
 | `POST` | `/api/agent-tasks/create` | Body: `{ title, description?, reward, createdBy }`. `createdBy` is a wallet address — no private key ever collected. |
 | `POST` | `/api/agent-tasks/assign/:id` | Body: `{ agentAddress }`. Agent must already be registered on-chain. |
-| `POST` | `/api/agent-tasks/complete/:id` | Body: `{ agentAddress, proof, txHash }`. The reward-minting `submitProof` tx is signed **client-side** by the agent's own wallet; this endpoint only verifies the resulting on-chain receipt (scoped to the token contract address) before marking the task complete — it never takes custody of a key. |
+| `POST` | `/api/agent-tasks/complete/:id` | Body: `{ agentAddress, proofText }`. `proofText` is a free-text report of the work done — never a score, amount, or tx hash. The server scores it via the shared AI validator (Gemini, see [`lib/pou-validator`](../lib/pou-validator)) and, only if it passes, mints on-chain from the server's own validator wallet and forwards the reward to `agentAddress`. The client can never supply a score or trigger a mint directly. |
 | `POST` | `/api/agent-tasks/verify/:id` | Body: `{ verified: boolean, verifiedBy? }`. Review/finalize a completed task (DB-only, no on-chain call). |
 
 ## Proof of Usefulness (PoU) analytics
@@ -65,6 +65,7 @@ Read-only aggregate views over `agent_proofs`, which a background indexer keeps 
 | `GET` | `/api/pou/rank/:address` | A single agent's rank on the "top" leaderboard. |
 | `GET` | `/api/pou/agents/:address` | Full profile: avg score, streak, radar dimensions, task category breakdown, derived achievements. |
 | `GET` | `/api/pou/agents/:address/proofs?limit=&offset=` | Paginated raw proof history for an agent. |
+| `POST` | `/api/pou/submit` | Body: `{ agentAddress, proof, signature }`. Backs the Dashboard's "Submit Proof of Use" tab. `signature` is an EIP-191 `personal_sign` signature (over the exact `proof` text) produced client-side by the connected wallet — it proves authorization without the private key ever reaching the server. `proof` is scored server-side by the same AI validator as `/agent-tasks/complete`; the mint amount is fixed, never client-supplied, and only a passing score triggers a mint from the server's validator wallet. Rate-limited to 5 submission attempts per address per rolling 24h. |
 
 ## Events / WebSocket
 

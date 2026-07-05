@@ -33,6 +33,7 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 - `contracts/artifacts/` — compiled contract ABIs and bytecode (gitignored)
 - `contracts/typechain-types/` — generated TypeScript bindings (gitignored)
 - `artifacts/api-server/src/` — Express API server source
+- `lib/pou-validator/` — shared PoU (Proof of Usefulness) validation package: strict pre-Gemini spam/length checks + the single Gemini-scoring call. Used by the API server (`pouMintService.ts`) and `scripts/src/validator-agent.ts` — no other code path may score a submission.
 - `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts)
 - `Dockerfile`, `fly.toml` — Fly.io deployment (multi-stage build, only `@workspace/api-server` runs in prod)
 - `docs/api.md`, `docs/agent.md`, `docs/deploy.md` — API reference, third-party agent connection guide, deployment guide
@@ -45,6 +46,7 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 - Role-based access with `AccessControl` — only `DEFAULT_ADMIN_ROLE`, `DEV_ADMIN_ROLE`, and `RESERVE_ROLE` exist; `registerAgent`/`submitProof` are deliberately permissionless (no role) so third-party agents never need to be granted anything.
 - AI daily mint quota is enforced on-chain using a UTC day epoch (`block.timestamp / 1 days`), shared globally (`dailyMintLimit`) and per-agent (`agentDailyCap`) across both mint paths (`submitProof` and `birthToken`).
 - No ERC-2612 Permit and no `Pausable` — the contract is intentionally minimal (`ERC20` + `AccessControl` only); don't assume these exist when writing docs or examples.
+- PoU minting is server-signed only, never client-signed: both the task-marketplace "complete" flow and the Dashboard's manual "Submit Proof of Use" tab send free-text proof to the API, which scores it via `lib/pou-validator` (strict validation, then Gemini) and — only on a passing score — mints from the server's own validator wallet (`AGENT_PRIVATE_KEY`) and forwards the reward. The frontend never sees a score, an amount, or the validator's key, and never signs a `submitProof` mint tx itself. The Dashboard flow additionally requires an EIP-191 wallet signature over the proof text (proves authorship without exposing the key) before the server will score it.
 
 ## Product
 

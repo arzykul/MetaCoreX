@@ -1,14 +1,30 @@
 import { Router, type IRouter } from "express";
 import { ethers } from "ethers";
-import { sql, desc, asc, gte, and, eq } from "drizzle-orm";
-import { db, agentProofsTable, agentTasksTable } from "@workspace/db";
+import { sql, desc, asc, and, eq } from "drizzle-orm";
+import { db, agentProofsTable, agentTasksTable, pouSubmissionsTable } from "@workspace/db";
+import { contractService } from "../services/contractService.js";
+import { validateScoreAndMint } from "../services/pouMintService.js";
 
 // PoU (Proof of Usefulness) analytics routes. Mounted at /api/pou/*.
-// All reads are backed by `agent_proofs`, which the background proofIndexer
+// Most reads are backed by `agent_proofs`, which the background proofIndexer
 // (see services/proofIndexer.ts) keeps in sync with on-chain `ProofAccepted`
 // events — this is the full network history, not just marketplace tasks.
+//
+// POST /pou/submit is the exception: it's the write path for the Dashboard's
+// "Submit Proof of Use" tab, and — like /agent-tasks/complete — is scored and
+// minted entirely server-side via pouMintService, never by the client.
 
 const router: IRouter = Router();
+
+const BASE_MINT_AMOUNT_ARZYG = "100";
+// Caps how many attempts (accepted or rejected) a single address can make in
+// a rolling 24h window — protects the rate-limited/billed Gemini API from
+// being hammered, independent of the on-chain per-agent daily mint cap.
+const DAILY_SUBMISSION_LIMIT = 5;
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
 
 const RANGE_TO_INTERVAL: Record<string, string> = {
   "24h": "24 hours",
@@ -489,6 +505,143 @@ router.get("/pou/agents/:address/proofs", async (req, res): Promise<void> => {
       txHash: r.txHash,
       blockTimestamp: r.blockTimestamp,
     })),
+  });
+});
+
+/**
+ * POST /api/pou/submit
+ * Body: { agentAddress, proof, signature }
+ *
+ * signature is an EIP-191 personal_sign signature over the exact `proof`
+ * string, produced client-side by the connected wallet (see dashboard.tsx).
+ * This proves the submission was authorized by agentAddress's private key
+ * WITHOUT that key ever reaching the server. The mint amount is always the
+ * fixed BASE_MINT_AMOUNT_ARZYG — never client-supplied — and the score comes
+ * only from pouMintService's server-side AI validator, which is the only
+ * code path allowed to trigger a mint.
+ */
+router.post("/pou/submit", async (req, res): Promise<void> => {
+  const { agentAddress, proof, signature } = req.body as {
+    agentAddress?: string;
+    proof?: string;
+    signature?: string;
+  };
+
+  if (!isNonEmptyString(agentAddress) || !ethers.isAddress(agentAddress)) {
+    res.status(400).json({ ok: false, error: "agentAddress must be a valid Ethereum address" });
+    return;
+  }
+  if (typeof proof !== "string") {
+    res.status(400).json({ ok: false, error: "proof is required and must be a string" });
+    return;
+  }
+  if (!isNonEmptyString(signature) || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
+    res.status(400).json({ ok: false, error: "signature must be a valid EIP-191 signature" });
+    return;
+  }
+
+  let recovered: string;
+  try {
+    recovered = ethers.verifyMessage(proof, signature);
+  } catch {
+    res.status(400).json({ ok: false, error: "Invalid signature" });
+    return;
+  }
+  if (recovered.toLowerCase() !== agentAddress.toLowerCase()) {
+    res.status(401).json({
+      ok: false,
+      error: "Signature does not match agentAddress — sign the exact proof text with the connected wallet",
+    });
+    return;
+  }
+
+  if (!contractService.connected) {
+    res.status(503).json({ ok: false, error: "Blockchain not connected" });
+    return;
+  }
+
+  const lower = agentAddress.toLowerCase();
+
+  // Dedupe: the exact same proof text can't be resubmitted by the same
+  // address once it has already been accepted and paid out.
+  const [dup] = await db
+    .select({ id: pouSubmissionsTable.id })
+    .from(pouSubmissionsTable)
+    .where(
+      and(
+        eq(pouSubmissionsTable.agentAddress, lower),
+        eq(pouSubmissionsTable.proof, proof),
+        eq(pouSubmissionsTable.status, "accepted")
+      )
+    );
+  if (dup) {
+    res.status(400).json({ ok: false, error: "This proof has already been submitted and accepted" });
+    return;
+  }
+
+  // Per-address daily cap on submission attempts.
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(pouSubmissionsTable)
+    .where(
+      and(
+        eq(pouSubmissionsTable.agentAddress, lower),
+        sql`${pouSubmissionsTable.createdAt} >= now() - interval '24 hours'`
+      )
+    );
+  if ((countRow?.count ?? 0) >= DAILY_SUBMISSION_LIMIT) {
+    res.status(429).json({
+      ok: false,
+      error: `Daily submission limit reached (${DAILY_SUBMISSION_LIMIT}/24h). Try again later.`,
+    });
+    return;
+  }
+
+  const amountWei = ethers.parseEther(BASE_MINT_AMOUNT_ARZYG);
+
+  let mintResult;
+  try {
+    mintResult = await validateScoreAndMint({ proofText: proof, recipient: agentAddress, amountWei });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    req.log.error({ err: message }, "pou/submit: AI validator failed");
+    res.status(502).json({ ok: false, error: `AI validator failed: ${message}` });
+    return;
+  }
+
+  await db.insert(pouSubmissionsTable).values({
+    agentAddress: lower,
+    proof,
+    signature,
+    status: mintResult.accepted ? "accepted" : "rejected",
+    score: mintResult.score,
+    reasoning: mintResult.reasoning,
+    rejectReason: mintResult.rejectReason ?? null,
+    amountWei: mintResult.amountWei,
+    rewardWei: mintResult.rewardWei ?? null,
+    mintTxHash: mintResult.mintTxHash ?? null,
+    transferTxHash: mintResult.transferTxHash ?? null,
+  });
+
+  if (!mintResult.accepted) {
+    res.status(400).json({
+      ok: false,
+      error: mintResult.rejectReason ?? "Proof was rejected by the AI validator",
+      score: mintResult.score,
+      reasoning: mintResult.reasoning,
+    });
+    return;
+  }
+
+  const newBalance = await contractService.getBalance(agentAddress);
+
+  res.json({
+    ok: true,
+    score: mintResult.score,
+    reasoning: mintResult.reasoning,
+    reward: mintResult.rewardArzyg,
+    txHash: mintResult.transferTxHash ?? mintResult.mintTxHash,
+    newBalance,
   });
 });
 

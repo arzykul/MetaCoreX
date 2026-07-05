@@ -12,6 +12,7 @@ import {
   createTask,
   assignTask,
   completeTask,
+  submitPou,
   verifyTask,
   getPouOverview,
   getPouTrend,
@@ -137,15 +138,24 @@ export function useCompleteTask() {
     mutationFn: ({
       id,
       agentAddress,
-      proof,
-      txHash,
+      proofText,
     }: {
       id: string;
       agentAddress: string;
-      proof: string;
-      txHash: string;
-    }) => completeTask(id, { agentAddress, proof, txHash }),
+      proofText: string;
+    }) => completeTask(id, { agentAddress, proofText }),
     onSuccess: invalidate,
+  });
+}
+
+/**
+ * Dashboard's "Submit Proof of Use" flow. The caller must already have an
+ * EIP-191 signature over `proof` from the connected wallet (see
+ * dashboard.tsx) — this hook does not sign anything itself.
+ */
+export function useSubmitPou() {
+  return useMutation({
+    mutationFn: submitPou,
   });
 }
 

@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, numeric, timestamp, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, numeric, integer, timestamp, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { randomUUID } from "node:crypto";
@@ -16,7 +16,16 @@ export const agentTasksTable = pgTable("agent_tasks", {
   agentAddress: varchar("agent_address", { length: 42 }),
   createdBy: varchar("created_by", { length: 42 }).notNull(),
   proof: text("proof"),
+  // Gemini PoU score (0-10) awarded to `proof` by the server-side AI
+  // validator, and its short reasoning — set only by the /agent-tasks/complete
+  // route via pouMintService, never accepted directly from a client.
+  score: integer("score"),
+  validatorReasoning: text("validator_reasoning"),
+  // txHash = the validator wallet's own on-chain submitProof mint tx.
+  // transferTxHash = the follow-up ERC20 transfer that forwards the reward
+  // from the validator wallet to the completing agent's address.
   txHash: varchar("tx_hash", { length: 66 }),
+  transferTxHash: varchar("transfer_tx_hash", { length: 66 }),
   assignedAt: timestamp("assigned_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),

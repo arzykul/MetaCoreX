@@ -128,7 +128,10 @@ export interface AgentTask {
   agentAddress: string | null;
   createdBy: string;
   proof: string | null;
+  score: number | null;
+  validatorReasoning: string | null;
   txHash: string | null;
+  transferTxHash: string | null;
   assignedAt: string | null;
   completedAt: string | null;
   verifiedAt: string | null;
@@ -205,15 +208,26 @@ export async function assignTask(id: string, agentAddress: string): Promise<Agen
   return data.task;
 }
 
-/** POST /api/agent-tasks/complete/:id — call only after the wallet-signed submitProof tx confirms. */
+/**
+ * POST /api/agent-tasks/complete/:id
+ *
+ * SECURITY: this only ever sends free-text `proofText` describing the work
+ * done — never a score, amount, or tx hash. The server scores the report
+ * with its own AI validator and, only if it passes, mints via its own
+ * validator wallet. There is no client-side signing step for this anymore.
+ */
 export async function completeTask(
   id: string,
-  input: { agentAddress: string; proof: string; txHash: string },
-): Promise<{ task: AgentTask; reward: string | null; newBalance: string | null }> {
-  return apiFetch<{ ok: boolean; task: AgentTask; reward: string | null; newBalance: string | null }>(
-    `/api/agent-tasks/complete/${id}`,
-    { method: "POST", body: JSON.stringify(input) },
-  );
+  input: { agentAddress: string; proofText: string },
+): Promise<{ task: AgentTask; reward: string | null; score: number; reasoning: string; newBalance: string | null }> {
+  return apiFetch<{
+    ok: boolean;
+    task: AgentTask;
+    reward: string | null;
+    score: number;
+    reasoning: string;
+    newBalance: string | null;
+  }>(`/api/agent-tasks/complete/${id}`, { method: "POST", body: JSON.stringify(input) });
 }
 
 /** POST /api/agent-tasks/verify/:id */
@@ -403,4 +417,29 @@ export function getPouAgentProofs(
   return apiFetch<PouAgentProofsPage>(
     `/api/pou/agents/${address}/proofs?limit=${limit}&offset=${offset}`,
   );
+}
+
+/**
+ * POST /api/pou/submit — the Dashboard's "Submit Proof of Use" flow.
+ *
+ * SECURITY: `signature` is an EIP-191 personal_sign signature over `proof`
+ * produced by the connected wallet (see dashboard.tsx) — it proves the
+ * submission is authorized by `agentAddress` WITHOUT ever sending a private
+ * key to the server. The server scores `proof` with its own AI validator and
+ * mints (fixed base amount) only via its own validator wallet if it passes;
+ * there is no client-supplied score or on-chain call in this flow anymore.
+ */
+export async function submitPou(input: {
+  agentAddress: string;
+  proof: string;
+  signature: string;
+}): Promise<{ score: number; reasoning: string; reward: string | null; txHash: string | null; newBalance: string | null }> {
+  return apiFetch<{
+    ok: boolean;
+    score: number;
+    reasoning: string;
+    reward: string | null;
+    txHash: string | null;
+    newBalance: string | null;
+  }>("/api/pou/submit", { method: "POST", body: JSON.stringify(input) });
 }

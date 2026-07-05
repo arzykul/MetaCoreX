@@ -6,3 +6,4 @@
 - [Drizzle date_trunc/GROUP BY param binding](drizzle-sql-groupby-params.md) — bound `$n` params in SELECT don't match same expression in GROUP BY; use sql.raw for validated enum values.
 - [Recharts mixed series silently dropped](recharts-mixed-series.md) — a `<Line>` inside `<AreaChart>` (or any non-matching series in a single-type chart) renders nothing, no error; use `<ComposedChart>` for mixed series.
 - [wagmi useConnect silent failures](wagmi-connect-silent-failure.md) — connect() fails with zero visible feedback unless the component reads `error`/`isPending`; common cause of "Connect Wallet button doesn't work".
+- [esbuild external transitive deps](esbuild-external-transitive-deps.md) — a lib's new dep matching an artifact's esbuild `external` pattern must also be declared in that artifact's own package.json, or it's an `ERR_MODULE_NOT_FOUND` at runtime only (build/typecheck stay green).

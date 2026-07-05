@@ -7,19 +7,21 @@ import {
   useBalance,
   useWriteContract,
   useWaitForTransactionReceipt,
+  useSignMessage,
 } from "wagmi";
-import { useAgents, useContractInfo } from "@/hooks/use-api";
+import { useAgents, useContractInfo, useSubmitPou } from "@/hooks/use-api";
 import { queryKeys } from "@/hooks/use-api";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Activity, BarChart3, Database, Key, Wallet } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { decodeEventLog, formatEther, type Address } from "viem";
+import { formatEther, type Address } from "viem";
 import { ARZYG_AGENT_ABI } from "@/lib/contract-abi";
 import { ConnectWalletPrompt, ConnectWalletButtons } from "@/components/wallet/connect-wallet-prompt";
 
@@ -49,7 +51,10 @@ export default function Dashboard() {
   const contractAddress = contractInfo?.address as Address | undefined;
 
   const [regForm, setRegForm] = useState({ name: "", description: "" });
-  const [proofForm, setProofForm] = useState({ proof: "", amount: "", score: "10" });
+  const [proofText, setProofText] = useState("");
+  const [pouResult, setPouResult] = useState<{ score: number; reasoning: string; reward: string | null; txHash: string | null } | null>(null);
+  const { signMessageAsync, isPending: isSigningProof } = useSignMessage();
+  const submitPou = useSubmitPou();
 
   const {
     writeContract: writeRegister,
@@ -61,46 +66,12 @@ export default function Dashboard() {
   const { isLoading: isRegisterConfirming, isSuccess: isRegisterConfirmed } =
     useWaitForTransactionReceipt({ hash: registerHash });
 
-  const {
-    writeContract: writeProof,
-    data: proofHash,
-    error: proofError,
-    isPending: isProofSigning,
-    reset: resetProof,
-  } = useWriteContract();
-  const { data: proofReceipt, isLoading: isProofConfirming, isSuccess: isProofConfirmed } =
-    useWaitForTransactionReceipt({ hash: proofHash });
-
-  const proofOutcome = useMemo(() => {
-    if (!proofReceipt) return null;
-    for (const log of proofReceipt.logs) {
-      try {
-        const decoded = decodeEventLog({ abi: ARZYG_AGENT_ABI, data: log.data, topics: log.topics });
-        if (decoded.eventName === "ProofAccepted") {
-          return { accepted: true as const, reward: decoded.args.reward as bigint };
-        }
-        if (decoded.eventName === "ProofRejected") {
-          return { accepted: false as const, reason: decoded.args.reason as string };
-        }
-      } catch {
-        continue;
-      }
-    }
-    return null;
-  }, [proofReceipt]);
-
   useEffect(() => {
     if (isRegisterConfirmed) {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents });
       setRegForm({ name: "", description: "" });
     }
   }, [isRegisterConfirmed, queryClient]);
-
-  useEffect(() => {
-    if (isProofConfirmed) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents });
-    }
-  }, [isProofConfirmed, queryClient]);
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,24 +85,28 @@ export default function Dashboard() {
     });
   };
 
-  const handleSubmitProof = (e: React.FormEvent) => {
+  /**
+   * SECURITY: no on-chain call happens here. The wallet only signs a plain
+   * message (EIP-191 personal_sign) over the proof text to prove the
+   * submission comes from `address` — the server's AI validator scores the
+   * text and, only if it passes, mints via its own validator wallet. There
+   * is no client-supplied score or amount anywhere in this flow.
+   */
+  const handleSubmitProof = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!contractAddress) return;
-    let amountBig: bigint;
-    let scoreBig: bigint;
+    if (!address || !proofText.trim()) return;
+    setPouResult(null);
     try {
-      amountBig = BigInt(proofForm.amount);
-      scoreBig = BigInt(proofForm.score);
+      const signature = await signMessageAsync({ message: proofText.trim() });
+      const res = await submitPou.mutateAsync({ agentAddress: address, proof: proofText.trim(), signature });
+      setPouResult(res);
+      if (res.reward) {
+        setProofText("");
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents });
+      }
     } catch {
-      return;
+      // signMessageAsync rejection or submitPou.isError is surfaced below
     }
-    resetProof();
-    writeProof({
-      address: contractAddress,
-      abi: ARZYG_AGENT_ABI,
-      functionName: "submitProof",
-      args: [proofForm.proof, amountBig, scoreBig],
-    });
   };
 
   return (
@@ -315,68 +290,43 @@ export default function Dashboard() {
                   <>
                     <Alert className="mb-6 border-primary/30 bg-primary/5">
                       <Wallet className="h-4 w-4" />
-                      <AlertTitle>Signed by your wallet</AlertTitle>
+                      <AlertTitle>Scored by our AI validator</AlertTitle>
                       <AlertDescription className="text-xs">
-                        Proofs are always credited to the connected address (<span className="font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</span>), which must already be a registered agent. Your wallet will prompt you to approve the transaction.
+                        Your wallet only signs a message to prove this report comes from <span className="font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</span> — no transaction, no gas. Our server scores the report with AI and mints the reward itself only if it passes; there's no way to set your own score or amount.
                       </AlertDescription>
                     </Alert>
 
                     <form onSubmit={handleSubmitProof} className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="proof-data">Cryptographic Proof / Payload</Label>
-                        <Input
+                        <Label htmlFor="proof-data">Describe the work you did</Label>
+                        <Textarea
                           id="proof-data"
-                          placeholder="IPFS hash, job ID, or raw payload"
-                          value={proofForm.proof}
-                          onChange={e => setProofForm({...proofForm, proof: e.target.value})}
+                          placeholder="What did you build, ship, or verify? Include links or evidence where possible."
+                          rows={4}
+                          value={proofText}
+                          onChange={e => setProofText(e.target.value)}
                           required
+                          minLength={20}
                           data-testid="input-proof-data"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="proof-amount">Base Amount (Wei)</Label>
-                          <Input
-                            id="proof-amount"
-                            placeholder="1000000000000000000"
-                            value={proofForm.amount}
-                            onChange={e => setProofForm({...proofForm, amount: e.target.value})}
-                            required
-                            data-testid="input-proof-amount"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="proof-score">Quality Score (1-10)</Label>
-                          <Input
-                            id="proof-score"
-                            type="number"
-                            min="1"
-                            max="10"
-                            value={proofForm.score}
-                            onChange={e => setProofForm({...proofForm, score: e.target.value})}
-                            required
-                            data-testid="input-proof-score"
-                          />
-                        </div>
-                      </div>
 
-                      {proofError && (
+                      {submitPou.isError && (
                         <div className="text-sm text-red-500 bg-red-500/10 p-3 rounded" data-testid="alert-proof-error">
-                          Error: {proofError.message}
+                          {submitPou.error instanceof Error ? submitPou.error.message : "Failed to submit proof"}
                         </div>
                       )}
 
-                      {isProofConfirmed && (
-                        <div className="text-sm text-primary bg-primary/10 p-3 rounded break-all" data-testid="alert-proof-success">
-                          Success! TxHash: {proofHash} <br/>
-                          {proofOutcome ? (
-                            proofOutcome.accepted ? (
-                              <>Accepted: Yes <br/> Reward: {proofOutcome.reward.toString()} Wei</>
-                            ) : (
-                              <>Accepted: No <br/> Reason: {proofOutcome.reason}</>
-                            )
+                      {pouResult && (
+                        <div
+                          className={`text-sm p-3 rounded break-all ${pouResult.reward ? "text-primary bg-primary/10" : "text-red-500 bg-red-500/10"}`}
+                          data-testid="alert-proof-success"
+                        >
+                          Score: {pouResult.score}/10 <br />
+                          {pouResult.reward ? (
+                            <>Accepted — Reward: {pouResult.reward} ARZY-G {pouResult.txHash && <>(tx: {pouResult.txHash})</>}</>
                           ) : (
-                            "Transaction confirmed."
+                            <>Rejected: {pouResult.reasoning}</>
                           )}
                         </div>
                       )}
@@ -384,10 +334,10 @@ export default function Dashboard() {
                       <Button
                         type="submit"
                         className="w-full"
-                        disabled={isProofSigning || isProofConfirming || !contractAddress}
+                        disabled={isSigningProof || submitPou.isPending}
                         data-testid="btn-submit-proof"
                       >
-                        {isProofSigning ? "Confirm in wallet..." : isProofConfirming ? "Submitting..." : "Submit Proof"}
+                        {isSigningProof ? "Confirm signature in wallet..." : submitPou.isPending ? "Scoring with AI validator..." : "Submit Proof"}
                       </Button>
                     </form>
                   </>

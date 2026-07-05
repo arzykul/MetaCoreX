@@ -1,0 +1,15 @@
+{
+  "name": "@workspace/pou-validator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { GoogleGenAI } from "@google/genai";
+import { validateProofText, scorePayload, MIN_SCORE_TO_MINT } from "@workspace/pou-validator";
 
 /**
  * MetaCoreX PoU validator agent.
@@ -8,6 +8,12 @@ import { GoogleGenAI } from "@google/genai";
  * work), asks Gemini to score it 1-10 on the "PoU Score" quality metric,
  * and — if the score is high enough — mints ARZY-G on-chain via the
  * Validator wallet's own proof-of-work submission.
+ *
+ * The pre-Gemini strict validation (`validateProofText`) and the scoring
+ * call (`scorePayload`) both live in `@workspace/pou-validator`, the same
+ * package the API server uses for the task-marketplace and dashboard
+ * submission routes. This script is a standalone demonstration of that
+ * shared logic, not an independent scoring path.
  *
  * IMPORTANT — there is no `mint(address to, uint256 amount)` function on
  * ARZYG_ERC20_AI. The contract intentionally has no generic "mint to any
@@ -30,8 +36,6 @@ import { GoogleGenAI } from "@google/genai";
  * Run: pnpm --filter @workspace/scripts run agent:validator
  */
 
-const MODEL = "gemini-2.5-flash";
-const MIN_SCORE_TO_MINT = 7;
 const CONTRACT_ADDRESS = "0xC3f4231F619F8D22666d70aeaA5D43EA56498770";
 const BASE_MINT_AMOUNT = "100"; // ARZY-G; actual reward = amount * score / 10
 
@@ -53,74 +57,6 @@ Summary: Pulled the last 24h of ETH/USD price and volume data, computed
 short-term volatility, and flagged a possible breakout above $3,800 with
 supporting on-chain volume evidence. Delivered as a 1-page markdown report
 with a chart reference and three actionable recommendations.`;
-
-// System instruction: turns the validator into a fact-checking "AI judge"
-// that uses Google Search grounding to verify concrete claims (deployed a
-// node, wrote an article, made a post, etc.) before awarding a high score.
-const SYSTEM_INSTRUCTION = `Ты — строгий ИИ-Судья для MetaCoreX. Твоя задача — проверить отчет исполнителя. Если исполнитель утверждает, что развернул ноду, написал статью или сделал пост, используй инструмент Google Search, чтобы найти подтверждение в интернете. Выставляй высокий PoU Score (>=7) только если нашел реальные доказательства в сети. Если информации нет или это спам — ставь балл ниже 7.`;
-
-interface PouScoreResult {
-  score: number;
-  reasoning: string;
-}
-
-function buildPrompt(payload: string): string {
-  return `Score the following executor report on a "PoU Score" from 1 (useless/low-effort/unverifiable) to 10 (exceptional, high-impact, verified work).
-
-Executor report:
-"""
-${payload}
-"""
-
-Respond with ONLY a compact JSON object, no markdown fences, in this exact shape:
-{"score": <integer 1-10>, "reasoning": "<one short sentence explaining the score, mentioning what search evidence, if any, was found>"}`;
-}
-
-function extractJson(text: string): unknown {
-  const fenced = text.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
-  try {
-    return JSON.parse(fenced);
-  } catch {
-    // Search-grounded responses sometimes wrap the JSON in extra prose —
-    // fall back to grabbing the first {...} block in the text.
-    const match = text.match(/\{[\s\S]*\}/);
-    if (match) {
-      return JSON.parse(match[0]);
-    }
-    throw new Error(`Could not parse model response as JSON: ${text}`);
-  }
-}
-
-async function scorePayload(ai: GoogleGenAI, payload: string): Promise<PouScoreResult> {
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: buildPrompt(payload),
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      tools: [{ googleSearch: {} }],
-    },
-  });
-
-  const text = (response.text ?? "").trim();
-
-  let parsed: unknown;
-  try {
-    parsed = extractJson(text);
-  } catch {
-    throw new Error(`Could not parse model response as JSON: ${text}`);
-  }
-
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    typeof (parsed as PouScoreResult).score !== "number" ||
-    typeof (parsed as PouScoreResult).reasoning !== "string"
-  ) {
-    throw new Error(`Unexpected response shape: ${text}`);
-  }
-
-  return parsed as PouScoreResult;
-}
 
 async function ensureValidatorRegistered(
   contract: ethers.Contract,
@@ -163,19 +99,22 @@ async function mintForScore(score: number): Promise<void> {
 }
 
 async function main() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  if (!process.env.GEMINI_API_KEY) {
     console.error("Missing GEMINI_API_KEY. Set it in Secrets before running this script.");
     process.exit(1);
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const validation = validateProofText(TEST_PAYLOAD);
+  if (!validation.valid) {
+    console.log(`Rejected before scoring: ${validation.reason}`);
+    process.exit(0);
+  }
 
-  console.log(`Scoring payload with ${MODEL}...\n`);
+  console.log(`Scoring payload...\n`);
   console.log(TEST_PAYLOAD);
   console.log("");
 
-  const result = await scorePayload(ai, TEST_PAYLOAD);
+  const result = await scorePayload(TEST_PAYLOAD);
 
   console.log("PoU Score result:");
   console.log(`  Score: ${result.score}/10`);

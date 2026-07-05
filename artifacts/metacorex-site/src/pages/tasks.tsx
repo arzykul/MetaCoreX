@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useAccount } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
-import { decodeEventLog, formatEther, parseEther, type Address } from "viem";
+import type { Address } from "viem";
 import {
   useTasks,
   useTaskStats,
@@ -10,11 +10,9 @@ import {
   useCreateTask,
   useAssignTask,
   useCompleteTask,
-  useContractInfo,
   queryKeys,
 } from "@/hooks/use-api";
 import { useMcxEvents } from "@/lib/ws";
-import { ARZYG_AGENT_ABI } from "@/lib/contract-abi";
 import type { AgentTask, TaskStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -145,68 +143,30 @@ function CreateTaskDialog({ createdBy }: { createdBy: Address }) {
   );
 }
 
-function CompleteTaskDialog({ task, agentAddress, contractAddress }: { task: AgentTask; agentAddress: Address; contractAddress: Address | undefined }) {
+function CompleteTaskDialog({ task, agentAddress }: { task: AgentTask; agentAddress: Address }) {
   const [open, setOpen] = useState(false);
   const [proof, setProof] = useState("");
+  const [result, setResult] = useState<{ score: number; reasoning: string; reward: string | null } | null>(null);
   const { toast } = useToast();
   const completeTask = useCompleteTask();
 
-  const {
-    writeContract,
-    data: txHash,
-    error: writeError,
-    isPending: isSigning,
-    reset: resetWrite,
-  } = useWriteContract();
-  const { data: receipt, isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
-
-  const outcome = useMemo(() => {
-    if (!receipt) return null;
-    for (const log of receipt.logs) {
-      try {
-        const decoded = decodeEventLog({ abi: ARZYG_AGENT_ABI, data: log.data, topics: log.topics });
-        if (decoded.eventName === "ProofAccepted") return { accepted: true as const };
-        if (decoded.eventName === "ProofRejected") return { accepted: false as const, reason: decoded.args.reason as string };
-      } catch {
-        continue;
-      }
-    }
-    return null;
-  }, [receipt]);
-
-  useEffect(() => {
-    if (!isConfirmed || !txHash) return;
-    if (outcome && !outcome.accepted) {
-      toast({ variant: "destructive", title: "Proof rejected", description: outcome.reason ?? "The transaction was rejected by the contract." });
-      return;
-    }
-    completeTask
-      .mutateAsync({ id: task.id, agentAddress, proof, txHash })
-      .then(() => {
-        toast({ title: "Task completed", description: "The reward has been credited to your balance." });
-        setOpen(false);
-        setProof("");
-        resetWrite();
-      })
-      .catch((err: unknown) => {
-        toast({ variant: "destructive", title: "Failed to confirm completion", description: err instanceof Error ? err.message : String(err) });
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConfirmed, txHash]);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!contractAddress || !proof.trim()) return;
-    resetWrite();
-    writeContract({
-      address: contractAddress,
-      abi: ARZYG_AGENT_ABI,
-      functionName: "submitProof",
-      args: [proof.trim(), parseEther(task.reward.toString()), 10n],
-    });
+    if (!proof.trim()) return;
+    setResult(null);
+    try {
+      const res = await completeTask.mutateAsync({ id: task.id, agentAddress, proofText: proof.trim() });
+      setResult({ score: res.score, reasoning: res.reasoning, reward: res.reward });
+      if (res.reward) {
+        toast({ title: "Task completed", description: `AI validator scored this ${res.score}/10 — the reward has been credited to your balance.` });
+        setProof("");
+      } else {
+        toast({ variant: "destructive", title: "Proof rejected", description: `AI validator scored this ${res.score}/10 — ${res.reasoning}` });
+      }
+    } catch (err: unknown) {
+      toast({ variant: "destructive", title: "Failed to submit proof", description: err instanceof Error ? err.message : String(err) });
+    }
   };
-
-  const busy = isSigning || isConfirming || completeTask.isPending;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -217,7 +177,7 @@ function CompleteTaskDialog({ task, agentAddress, contractAddress }: { task: Age
         <DialogHeader>
           <DialogTitle>Complete: {task.title}</DialogTitle>
           <DialogDescription>
-            Confirmation is signed with your wallet via <span className="font-mono">submitProof</span> — the {task.reward} ARZY-G reward will be credited automatically once accepted.
+            Describe the work you did. Our AI validator scores your report — the {task.reward} ARZY-G reward is minted and credited automatically only if it passes.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -227,27 +187,32 @@ function CompleteTaskDialog({ task, agentAddress, contractAddress }: { task: Age
               id="proof-input"
               value={proof}
               onChange={(e) => setProof(e.target.value)}
-              placeholder="IPFS hash, report link, or other verification"
-              rows={3}
+              placeholder="Describe what you did, with links or evidence where possible"
+              rows={4}
               required
+              minLength={20}
               data-testid="input-complete-proof"
             />
           </div>
 
-          {writeError && (
-            <div className="text-sm text-red-500 bg-red-500/10 p-3 rounded" data-testid="alert-complete-error">
-              Error: {writeError.message}
-            </div>
-          )}
           {completeTask.isError && (
             <div className="text-sm text-red-500 bg-red-500/10 p-3 rounded" data-testid="alert-complete-server-error">
               {completeTask.error instanceof Error ? completeTask.error.message : "Failed to complete task"}
             </div>
           )}
+          {result && (
+            <div
+              className={`text-sm p-3 rounded ${result.reward ? "text-primary bg-primary/10" : "text-red-500 bg-red-500/10"}`}
+              data-testid="alert-complete-result"
+            >
+              Score: {result.score}/10 <br />
+              {result.reward ? <>Reward: {result.reward} ARZY-G credited.</> : <>Rejected: {result.reasoning}</>}
+            </div>
+          )}
 
           <DialogFooter>
-            <Button type="submit" className="w-full" disabled={busy || !contractAddress} data-testid="btn-submit-complete">
-              {isSigning ? "Confirm in wallet..." : isConfirming ? "Confirming transaction..." : completeTask.isPending ? "Saving..." : "Submit Proof"}
+            <Button type="submit" className="w-full" disabled={completeTask.isPending} data-testid="btn-submit-complete">
+              {completeTask.isPending ? "Scoring with AI validator..." : "Submit Proof"}
             </Button>
           </DialogFooter>
         </form>
@@ -294,7 +259,7 @@ function AvailableTaskCard({ task, isConnected, address, onAssign, isAssigning }
   );
 }
 
-function MyTaskCard({ task, address, contractAddress }: { task: AgentTask; address: Address; contractAddress: Address | undefined }) {
+function MyTaskCard({ task, address }: { task: AgentTask; address: Address }) {
   return (
     <TaskCard>
       <div className="flex items-start justify-between gap-3 mb-2">
@@ -307,7 +272,7 @@ function MyTaskCard({ task, address, contractAddress }: { task: AgentTask; addre
           <Coins className="w-4 h-4" /> {task.reward} ARZY-G
         </div>
         {task.status === "assigned" ? (
-          <CompleteTaskDialog task={task} agentAddress={address} contractAddress={contractAddress} />
+          <CompleteTaskDialog task={task} agentAddress={address} />
         ) : task.txHash ? (
           <span className="text-xs text-muted-foreground font-mono truncate max-w-[140px]" title={task.txHash}>{formatAddress(task.txHash)}</span>
         ) : null}
@@ -396,8 +361,6 @@ export default function Tasks() {
   const { address, isConnected } = useAccount();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: contractInfo } = useContractInfo();
-  const contractAddress = contractInfo?.address as Address | undefined;
 
   const [activeTab, setActiveTab] = useState<"available" | "my" | "completed">("available");
   const [availablePage, setAvailablePage] = useState(0);
@@ -542,7 +505,7 @@ export default function Tasks() {
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {myTasks.map((task) => (
-                  <MyTaskCard key={task.id} task={task} address={address} contractAddress={contractAddress} />
+                  <MyTaskCard key={task.id} task={task} address={address} />
                 ))}
               </div>
             )}

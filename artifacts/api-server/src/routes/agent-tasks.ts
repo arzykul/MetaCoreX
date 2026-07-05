@@ -1,18 +1,21 @@
 import { Router, type IRouter } from "express";
 import { ethers } from "ethers";
-import { eq, desc, asc, sql, and } from "drizzle-orm";
+import { eq, desc, asc, sql } from "drizzle-orm";
 import { db, agentTasksTable, agentTaskHistoryTable } from "@workspace/db";
 import { contractService } from "../services/contractService.js";
+import { validateScoreAndMint } from "../services/pouMintService.js";
 import { mcxEventBus } from "../ws/eventBus.js";
 
 // Agent task marketplace routes. Mounted at /api/agent-tasks/* (NOT /api/tasks,
 // which is the unrelated personal-agent to-do feature — see routes/tasks.ts).
 //
-// Reward-moving actions never accept a raw private key. Completing a task is
-// signed client-side by the agent's connected wallet (wagmi `writeContract`
-// against submitProof, same pattern as the dashboard's "Submit Proof" tab).
-// This route only verifies the resulting on-chain transaction and persists
-// the outcome — consistent with the rest of this site's wallet-signing model.
+// SECURITY: completing a task NEVER accepts a client-supplied score, amount,
+// or on-chain tx — those used to be signed client-side (self-reported score),
+// which let a user set score=10 and self-mint the full reward regardless of
+// actual work done. Now the client sends only free-text proof; this route
+// hands it to pouMintService, which runs it through Gemini scoring and mints
+// — signed only by the server's own validator wallet — before forwarding the
+// reward to the agent. See pouMintService.ts / contractService.ts.
 
 const router: IRouter = Router();
 
@@ -254,17 +257,18 @@ router.post("/agent-tasks/assign/:id", async (req, res): Promise<void> => {
 
 /**
  * POST /api/agent-tasks/complete/:id
- * Body: { agentAddress, proof, txHash }
- * The reward-minting `submitProof` transaction is signed client-side by the
- * agent's wallet before this call. This endpoint verifies that transaction
- * on-chain (via the receipt) rather than trusting a client-supplied reward.
+ * Body: { agentAddress, proofText }
+ * proofText is a free-text report of the work done — NOT a score, amount, or
+ * tx hash. This route scores it server-side via the shared AI validator
+ * (pouMintService) and, only if it passes, mints via the server's own
+ * validator wallet and forwards the reward to agentAddress. The client can
+ * never supply a score or trigger a mint directly.
  */
 router.post("/agent-tasks/complete/:id", async (req, res): Promise<void> => {
   const id = firstParam(req.params.id);
-  const { agentAddress, proof, txHash } = req.body as {
+  const { agentAddress, proofText } = req.body as {
     agentAddress?: string;
-    proof?: string;
-    txHash?: string;
+    proofText?: string;
   };
 
   if (!id) {
@@ -275,12 +279,8 @@ router.post("/agent-tasks/complete/:id", async (req, res): Promise<void> => {
     res.status(400).json({ ok: false, error: "agentAddress must be a valid Ethereum address" });
     return;
   }
-  if (!isNonEmptyString(proof)) {
-    res.status(400).json({ ok: false, error: "proof is required and must be a non-empty string" });
-    return;
-  }
-  if (!isNonEmptyString(txHash) || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
-    res.status(400).json({ ok: false, error: "txHash must be a valid transaction hash" });
+  if (typeof proofText !== "string") {
+    res.status(400).json({ ok: false, error: "proofText is required and must be a string" });
     return;
   }
 
@@ -303,50 +303,62 @@ router.post("/agent-tasks/complete/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  // Prevent a single on-chain proof tx from being reused to "complete" more
-  // than one marketplace task (the contract itself has no notion of tasks,
-  // so this has to be enforced here).
-  const [existingWithTx] = await db
-    .select({ id: agentTasksTable.id })
-    .from(agentTasksTable)
-    .where(and(eq(agentTasksTable.txHash, txHash), sql`${agentTasksTable.id} != ${id}`));
-  if (existingWithTx) {
-    res.status(400).json({ ok: false, error: "This transaction has already been used to complete another task" });
+  const amountWei = ethers.parseEther(String(task.reward));
+
+  let mintResult;
+  try {
+    mintResult = await validateScoreAndMint({ proofText, recipient: agentAddress, amountWei });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    req.log.error({ err: message }, "agent-tasks/complete: AI validator failed");
+    res.status(502).json({ ok: false, error: `AI validator failed: ${message}` });
     return;
   }
 
-  let rewardWei: string | undefined;
-  try {
-    const verification = await contractService.verifyProofTx(txHash, agentAddress);
-    if (!verification || !verification.accepted) {
-      res.status(400).json({
-        ok: false,
-        error: verification?.reason ?? "Proof transaction was not accepted on-chain",
-      });
-      return;
-    }
-    rewardWei = verification.reward;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    req.log.warn({ err: message }, "agent-tasks/complete: proof verification failed");
-    res.status(400).json({ ok: false, error: `Failed to verify transaction: ${message}` });
+  if (!mintResult.accepted) {
+    req.log.info({ taskId: id, agentAddress, score: mintResult.score }, "agent-tasks/complete: proof rejected");
+    res.status(400).json({
+      ok: false,
+      error: mintResult.rejectReason ?? "Proof was rejected by the AI validator",
+      score: mintResult.score,
+      reasoning: mintResult.reasoning,
+    });
     return;
   }
 
   const [updated] = await db
     .update(agentTasksTable)
-    .set({ status: "completed", proof, txHash, completedAt: new Date() })
+    .set({
+      status: "completed",
+      proof: proofText,
+      score: mintResult.score,
+      validatorReasoning: mintResult.reasoning,
+      txHash: mintResult.mintTxHash,
+      transferTxHash: mintResult.transferTxHash,
+      completedAt: new Date(),
+    })
     .where(eq(agentTasksTable.id, id))
     .returning();
 
   await recordHistory(id, "completed", agentAddress);
 
-  const rewardArzyg = rewardWei ? ethers.formatEther(rewardWei) : null;
   const newBalance = await contractService.getBalance(agentAddress);
 
-  mcxEventBus.publish("TaskCompleted", { taskId: id, agentAddress, reward: rewardArzyg, txHash });
+  mcxEventBus.publish("TaskCompleted", {
+    taskId: id,
+    agentAddress,
+    reward: mintResult.rewardArzyg ?? null,
+    txHash: mintResult.transferTxHash ?? mintResult.mintTxHash,
+  });
 
-  res.json({ ok: true, task: updated, reward: rewardArzyg, newBalance });
+  res.json({
+    ok: true,
+    task: updated,
+    reward: mintResult.rewardArzyg ?? null,
+    score: mintResult.score,
+    reasoning: mintResult.reasoning,
+    newBalance,
+  });
 });
 
 /**

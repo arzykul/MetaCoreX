@@ -166,6 +166,9 @@ importers:
 
   artifacts/api-server:
     dependencies:
+      '@google/genai':
+        specifier: ^1.30.0
+        version: 1.52.0
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -175,6 +178,9 @@ importers:
       '@workspace/integrations-openrouter-ai':
         specifier: workspace:*
         version: link:../../lib/integrations-openrouter-ai
+      '@workspace/pou-validator':
+        specifier: workspace:*
+        version: link:../../lib/pou-validator
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -1056,11 +1062,21 @@ importers:
         specifier: 'catalog:'
         version: 25.6.2
 
-  scripts:
+  lib/pou-validator:
     dependencies:
       '@google/genai':
         specifier: ^1.30.0
         version: 1.52.0
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.2
+
+  scripts:
+    dependencies:
+      '@workspace/pou-validator':
+        specifier: workspace:*
+        version: link:../lib/pou-validator
       ethers:
         specifier: ^6.16.0
         version: 6.16.0

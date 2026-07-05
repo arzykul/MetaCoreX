@@ -90,6 +90,13 @@ class ContractService {
   private agentScanBlock = 0;
   private agentScanInFlight: Promise<void> | null = null;
 
+  // Server-controlled validator wallet — the ONLY signer allowed to mint via
+  // the AI-scored PoU paths (task marketplace completion + dashboard "Submit
+  // Proof of Use"). Its key never reaches the frontend; it lives only in the
+  // AGENT_PRIVATE_KEY secret. Lazily constructed on first use (after
+  // this.provider exists), not at connect time.
+  private validatorWallet: ethers.Wallet | null = null;
+
   // ── Public API ─────────────────────────────────────────────────────────────
 
   get connected(): boolean { return this._connected; }
@@ -276,65 +283,117 @@ class ContractService {
     return { txHash: receipt?.hash ?? tx.hash, accepted, reward, reason };
   }
 
-  /**
-   * Fetches a transaction receipt and parses it for ProofAccepted/ProofRejected
-   * logs scoped to `expectedAgent`. Used to verify a client-signed submitProof
-   * transaction (from the agent-tasks "complete" flow) actually happened
-   * on-chain and paid the expected agent, instead of trusting a client-supplied
-   * reward value.
-   */
-  async verifyProofTx(
-    txHash: string,
-    expectedAgent: string
-  ): Promise<{ accepted: boolean; reward?: string; reason?: string } | null> {
-    if (!this._connected || !this.token || !this.provider) {
-      return null;
-    }
-
-    const receipt = await this.provider.getTransactionReceipt(txHash);
-    if (!receipt) return null;
-
-    const tokenAddress = (this.token.target as string).toLowerCase();
-
-    let accepted = false;
-    let reward: string | undefined;
-    let reason: string | undefined;
-
-    for (const log of receipt.logs) {
-      // Only trust events emitted BY the ARZY-G token contract itself. Without
-      // this check, an attacker could deploy their own contract that emits a
-      // fake `ProofAccepted(agent, reward)` event in the same transaction and
-      // have it accepted as proof of a real on-chain mint.
-      if (log.address.toLowerCase() !== tokenAddress) continue;
-
-      let parsed: ethers.LogDescription | null = null;
-      try {
-        parsed = this.token.interface.parseLog(log);
-      } catch {
-        continue;
-      }
-      if (!parsed) continue;
-
-      const agent = parsed.args.agent as string | undefined;
-      if (!agent || agent.toLowerCase() !== expectedAgent.toLowerCase()) continue;
-
-      if (parsed.name === "ProofAccepted") {
-        accepted = true;
-        reward = (parsed.args.reward as bigint).toString();
-      } else if (parsed.name === "ProofRejected") {
-        accepted = false;
-        reason = parsed.args.reason as string;
-      }
-    }
-
-    return { accepted, reward, reason };
-  }
-
   /** Reads a live ARZY-G token balance for an address. */
   async getBalance(address: string): Promise<string | null> {
     if (!this._connected || !this.token) return null;
     const bal = await this.token.balanceOf(address);
     return ethers.formatEther(bal);
+  }
+
+  // ── Validator wallet (server-signed AI-scored mint paths) ──────────────────
+
+  private _getValidatorWallet(): ethers.Wallet {
+    if (!this.provider) {
+      throw new Error("Contract not connected");
+    }
+    if (!this.validatorWallet) {
+      const privateKey = process.env.AGENT_PRIVATE_KEY;
+      if (!privateKey) {
+        throw new Error("AGENT_PRIVATE_KEY secret not set — cannot run the server-side PoU validator");
+      }
+      this.validatorWallet = new ethers.Wallet(privateKey, this.provider);
+    }
+    return this.validatorWallet;
+  }
+
+  /** The server validator's own on-chain address (for logging/diagnostics). */
+  get validatorAddress(): string | null {
+    try {
+      return this._getValidatorWallet().address;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Registers the validator wallet as an on-chain agent if it isn't already
+   * active. Required once before it can call submitProof.
+   */
+  async ensureValidatorRegistered(): Promise<void> {
+    if (!this._connected || !this.token) {
+      throw new Error("Contract not connected");
+    }
+    const wallet = this._getValidatorWallet();
+    const info = await this.getAgentInfo(wallet.address);
+    if (info?.isActive) return;
+
+    logger.info({ validator: wallet.address }, "contractService: registering PoU validator wallet on-chain");
+    const tokenWithSigner = this.token.connect(wallet) as ethers.Contract;
+    const tx = await tokenWithSigner.registerAgent(
+      "MetaCoreX PoU Validator",
+      "Server-side AI validator — mints on behalf of AI-scored proof submissions"
+    );
+    await tx.wait();
+  }
+
+  /**
+   * Submits a proof-of-work as the server's OWN validator wallet (never a
+   * user-supplied address or key). This is the only mint path reachable from
+   * the website — see pouMintService.ts, which calls this only after a real
+   * Gemini score has been computed server-side. The reward always lands on
+   * the validator wallet itself; callers are expected to follow up with
+   * transferFromValidator() to forward it to the actual recipient.
+   */
+  async submitProofAsValidator(proof: string, amount: bigint, score: number): Promise<SubmitProofResult> {
+    if (!this._connected || !this.token) {
+      throw new Error("Contract not connected");
+    }
+    const wallet = this._getValidatorWallet();
+    const tokenWithSigner = this.token.connect(wallet) as ethers.Contract;
+    const tx = await tokenWithSigner.submitProof(proof, amount, BigInt(score));
+    const receipt = await tx.wait();
+
+    let accepted = false;
+    let reward: string | undefined;
+    let reason: string | undefined;
+
+    if (receipt) {
+      for (const log of receipt.logs) {
+        let parsed: ethers.LogDescription | null = null;
+        try {
+          parsed = this.token.interface.parseLog(log);
+        } catch {
+          continue;
+        }
+        if (!parsed) continue;
+
+        if (parsed.name === "ProofAccepted") {
+          accepted = true;
+          reward = (parsed.args.reward as bigint).toString();
+        } else if (parsed.name === "ProofRejected") {
+          accepted = false;
+          reason = parsed.args.reason as string;
+        }
+      }
+    }
+
+    return { txHash: receipt?.hash ?? tx.hash, accepted, reward, reason };
+  }
+
+  /**
+   * Forwards ARZY-G from the validator wallet to `to` via a plain ERC20
+   * transfer. Used right after submitProofAsValidator() to route the freshly
+   * minted reward to the actual agent/recipient address.
+   */
+  async transferFromValidator(to: string, amountWei: bigint): Promise<string> {
+    if (!this._connected || !this.token) {
+      throw new Error("Contract not connected");
+    }
+    const wallet = this._getValidatorWallet();
+    const tokenWithSigner = this.token.connect(wallet) as ethers.Contract;
+    const tx = await tokenWithSigner.transfer(to, amountWei);
+    const receipt = await tx.wait();
+    return receipt?.hash ?? tx.hash;
   }
 
   async getAgentInfo(address: string): Promise<AgentInfo | null> {
