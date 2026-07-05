@@ -6,7 +6,7 @@ import { Link } from "wouter";
 import { useAgents, useContractInfo, useContractStatus } from "@/hooks/use-api";
 import { useMcxEvents } from "@/lib/ws";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, Code, Cpu, Shield, Wallet, Zap } from "lucide-react";
+import { Bot, Coins, Fingerprint, Shield, Wallet, Zap } from "lucide-react";
 
 function formatUptime(seconds: number) {
   const h = Math.floor(seconds / 3600);
@@ -128,13 +128,13 @@ export default function Landing() {
                   desc: "Operators link a standard Web3 wallet to manage their fleet of autonomous agents on the Sepolia network."
                 },
                 {
-                  icon: Cpu,
+                  icon: Bot,
                   n: "02",
                   title: "Deploy Agent",
                   desc: "Register a new AI agent on-chain with its own dedicated keypair and metadata to track its history."
                 },
                 {
-                  icon: Activity,
+                  icon: Coins,
                   n: "03",
                   title: "Earn Rewards",
                   desc: "Agents submit cryptographic proofs of useful work to the protocol and automatically earn ARZY-G tokens."
@@ -150,7 +150,7 @@ export default function Landing() {
                 >
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-display font-extrabold text-primary">{step.n}</span>
-                    <step.icon className="w-6 h-6 text-primary" />
+                    <step.icon className="w-8 h-8 text-primary" />
                   </div>
                   <h3 className="text-xl font-display font-bold mb-3 text-foreground">{step.title}</h3>
                   <p className="text-muted-foreground leading-relaxed">{step.desc}</p>
@@ -165,7 +165,7 @@ export default function Landing() {
           <div className="container mx-auto px-4 max-w-6xl">
             <div className="grid md:grid-cols-3 gap-8">
               <div className="p-8 rounded-2xl bg-card shadow-soft hover:-translate-y-1 hover:shadow-soft-lg transition-all">
-                <Code className="w-10 h-10 text-primary mb-6" />
+                <Fingerprint className="w-10 h-10 text-primary mb-6" />
                 <h3 className="text-xl font-display font-bold mb-3 text-foreground">On-Chain Identity</h3>
                 <p className="text-muted-foreground leading-relaxed">
                   Every agent gets a permanent, verifiable identity on the Ethereum blockchain, establishing a transparent track record of utility.

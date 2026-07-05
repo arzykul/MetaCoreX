@@ -2,17 +2,29 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { Cpu, Menu } from "lucide-react";
+import {
+  BarChart3,
+  BookOpen,
+  Cpu,
+  FileCheck,
+  HelpCircle,
+  Home,
+  LayoutDashboard,
+  Menu,
+  MessageSquare,
+  Newspaper,
+  Users,
+} from "lucide-react";
 
 const navLinks = [
-  { label: "Home", href: "/" },
-  { label: "Agents", href: "/dashboard?tab=agents" },
-  { label: "Submit Proof", href: "/dashboard?tab=proof" },
-  { label: "Analytics", href: "/dashboard?tab=analytics" },
-  { label: "FAQ", href: "/faq" },
-  { label: "Blog", href: "/blog" },
-  { label: "Docs", href: "/docs" },
-  { label: "Contact", href: "/contact" },
+  { label: "Home", href: "/", icon: Home },
+  { label: "Agents", href: "/dashboard?tab=agents", icon: Users },
+  { label: "Submit Proof", href: "/dashboard?tab=proof", icon: FileCheck },
+  { label: "Analytics", href: "/dashboard?tab=analytics", icon: BarChart3 },
+  { label: "FAQ", href: "/faq", icon: HelpCircle },
+  { label: "Blog", href: "/blog", icon: Newspaper },
+  { label: "Docs", href: "/docs", icon: BookOpen },
+  { label: "Contact", href: "/contact", icon: MessageSquare },
 ];
 
 function pathOf(href: string) {
@@ -38,13 +50,14 @@ export function Navbar() {
             <Link
               key={link.href}
               href={link.href}
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                 pathOf(link.href) === location
                   ? "text-primary bg-primary/10"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
               data-testid={`link-nav-${link.label.toLowerCase().replace(/\s+/g, "-")}`}
             >
+              <link.icon className="w-[18px] h-[18px]" />
               {link.label}
             </Link>
           ))}
@@ -54,12 +67,14 @@ export function Navbar() {
           {location !== "/dashboard" ? (
             <Button asChild variant="default" className="font-semibold">
               <Link href="/dashboard" data-testid="btn-nav-launch">
+                <LayoutDashboard className="w-4 h-4 mr-2" />
                 Launch App
               </Link>
             </Button>
           ) : (
             <Button asChild variant="outline" className="font-semibold text-muted-foreground hover:text-foreground">
               <Link href="/" data-testid="btn-nav-home">
+                <Home className="w-4 h-4 mr-2" />
                 Back to Site
               </Link>
             </Button>
@@ -81,13 +96,14 @@ export function Navbar() {
                     key={link.href}
                     href={link.href}
                     onClick={() => setOpen(false)}
-                    className={`px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
                       pathOf(link.href) === location
                         ? "text-primary bg-primary/10"
                         : "text-foreground hover:bg-muted"
                     }`}
                     data-testid={`link-mobile-nav-${link.label.toLowerCase().replace(/\s+/g, "-")}`}
                   >
+                    <link.icon className="w-[18px] h-[18px]" />
                     {link.label}
                   </Link>
                 ))}
@@ -95,11 +111,17 @@ export function Navbar() {
               <div className="mt-auto pt-6 border-t border-border">
                 {location !== "/dashboard" ? (
                   <Button asChild className="w-full font-semibold" onClick={() => setOpen(false)}>
-                    <Link href="/dashboard">Launch App</Link>
+                    <Link href="/dashboard">
+                      <LayoutDashboard className="w-4 h-4 mr-2" />
+                      Launch App
+                    </Link>
                   </Button>
                 ) : (
                   <Button asChild variant="outline" className="w-full font-semibold" onClick={() => setOpen(false)}>
-                    <Link href="/">Back to Site</Link>
+                    <Link href="/">
+                      <Home className="w-4 h-4 mr-2" />
+                      Back to Site
+                    </Link>
                   </Button>
                 )}
               </div>

@@ -4,7 +4,7 @@ import { Footer } from "@/components/layout/footer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getBlogPost } from "@/data/blog-posts";
-import { ArrowLeft, Calendar } from "lucide-react";
+import { ArrowLeft, Calendar, Tag } from "lucide-react";
 import NotFound from "@/pages/not-found";
 
 function formatDate(iso: string) {
@@ -35,8 +35,9 @@ export default function BlogPost() {
 
           <div className="flex flex-wrap items-center gap-2 mb-6">
             {post.tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="font-medium">
-                #{tag}
+              <Badge key={tag} variant="secondary" className="font-medium inline-flex items-center gap-1">
+                <Tag className="w-3 h-3" />
+                {tag}
               </Badge>
             ))}
           </div>

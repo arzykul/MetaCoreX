@@ -17,9 +17,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Activity, Database, Key, Wallet } from "lucide-react";
+import { Activity, BarChart3, Database, Key, Wallet } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { decodeEventLog, formatEther, type Address } from "viem";
 import { ARZYG_AGENT_ABI } from "@/lib/contract-abi";
 
@@ -212,7 +212,7 @@ export default function Dashboard() {
               <Activity className="w-4 h-4 mr-2" /> Submit Proof
             </TabsTrigger>
             <TabsTrigger value="analytics" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-analytics">
-              <BarChart className="w-4 h-4 mr-2" /> PoU Analytics
+              <BarChart3 className="w-4 h-4 mr-2" /> PoU Analytics
             </TabsTrigger>
           </TabsList>
 
@@ -442,7 +442,7 @@ export default function Dashboard() {
                 ) : (
                   <div className="h-[400px] w-full" data-testid="chart-earnings">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={agents.map(a => ({ name: a.name, earned: parseFloat(a.totalEarned) }))}>
+                      <RechartsBarChart data={agents.map(a => ({ name: a.name, earned: parseFloat(a.totalEarned) }))}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
                         <XAxis dataKey="name" stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
                         <YAxis stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
@@ -453,7 +453,7 @@ export default function Dashboard() {
                           labelStyle={{ color: '#1A1A1A' }}
                         />
                         <Bar dataKey="earned" fill="#0055FF" radius={[4, 4, 0, 0]} />
-                      </BarChart>
+                      </RechartsBarChart>
                     </ResponsiveContainer>
                   </div>
                 )}

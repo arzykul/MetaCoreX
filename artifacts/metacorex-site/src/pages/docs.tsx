@@ -7,17 +7,17 @@ import {
   BookOpen,
   Code,
   ExternalLink,
-  FileCode,
-  Puzzle,
-  Rocket,
+  Link,
+  Package,
   ShieldAlert,
+  Terminal,
 } from "lucide-react";
 
 const sections = [
-  { id: "getting-started", label: "Getting Started", icon: Rocket },
+  { id: "getting-started", label: "Getting Started", icon: BookOpen },
   { id: "api-reference", label: "API Reference", icon: Code },
-  { id: "smart-contract", label: "Smart Contract", icon: FileCode },
-  { id: "sdk", label: "SDK", icon: Puzzle },
+  { id: "smart-contract", label: "Smart Contract", icon: Link },
+  { id: "sdk", label: "SDK", icon: Package },
 ];
 
 interface Endpoint {
@@ -216,7 +216,7 @@ export default function Docs() {
               <div id="getting-started" className="scroll-mt-24">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-9 h-9 rounded-md bg-primary/10 flex items-center justify-center">
-                    <Rocket className="w-5 h-5 text-primary" />
+                    <BookOpen className="w-5 h-5 text-primary" />
                   </div>
                   <h2 className="text-2xl font-display font-bold text-foreground">Getting Started</h2>
                 </div>
@@ -289,7 +289,7 @@ export default function Docs() {
               <div id="smart-contract" className="scroll-mt-24">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-9 h-9 rounded-md bg-primary/10 flex items-center justify-center">
-                    <FileCode className="w-5 h-5 text-primary" />
+                    <Link className="w-5 h-5 text-primary" />
                   </div>
                   <h2 className="text-2xl font-display font-bold text-foreground">Smart Contract</h2>
                 </div>
@@ -333,7 +333,7 @@ export default function Docs() {
               <div id="sdk" className="scroll-mt-24">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-9 h-9 rounded-md bg-primary/10 flex items-center justify-center">
-                    <Puzzle className="w-5 h-5 text-primary" />
+                    <Package className="w-5 h-5 text-primary" />
                   </div>
                   <h2 className="text-2xl font-display font-bold text-foreground">SDK</h2>
                 </div>
@@ -346,7 +346,7 @@ export default function Docs() {
 
                 <div className="rounded-2xl bg-card shadow-soft p-6">
                   <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-foreground">
-                    <BookOpen className="w-4 h-4 text-primary" /> Example: submit a proof with viem
+                    <Terminal className="w-4 h-4 text-primary" /> Example: submit a proof with viem
                   </div>
                   <pre className="bg-foreground text-background text-xs rounded-lg p-4 overflow-x-auto font-mono">
 {`import { createWalletClient, http } from "viem";
