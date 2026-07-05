@@ -4,6 +4,7 @@ import { createWsServer, handleUpgrade } from "./ws/wsServer.js";
 import { logger } from "./lib/logger.js";
 import { mcxEventBus } from "./ws/eventBus.js";
 import { contractService } from "./services/contractService.js";
+import { proofIndexer } from "./services/proofIndexer.js";
 import { seedAgentTasksIfEmpty } from "./lib/seedAgentTasks.js";
 
 const rawPort = process.env["PORT"];
@@ -54,6 +55,11 @@ server.listen(port, () => {
   // Initialize blockchain bridge (non-blocking — retries automatically)
   contractService.init().catch((err) => {
     logger.warn({ err }, "contractService init error");
+  });
+
+  // Start PoU proof indexer (non-blocking — waits for chain connection, then backfills + polls)
+  proofIndexer.start().catch((err) => {
+    logger.warn({ err }, "proofIndexer start error");
   });
 
   // Seed demo agent tasks once (non-blocking)

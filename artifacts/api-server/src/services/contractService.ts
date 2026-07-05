@@ -470,6 +470,66 @@ class ContractService {
     return [];
   }
 
+  // ── Proof indexing (PoU analytics) ──────────────────────────────────────────
+
+  /** Block the ARZY-G contract was deployed at, if known — used to anchor a full backfill. */
+  get deploymentBlock(): number | null {
+    return this.deployed?.contracts.ARZYG_ERC20_AI.deploymentBlock ?? null;
+  }
+
+  async getCurrentBlockNumber(): Promise<number | null> {
+    if (!this.provider) return null;
+    return this.provider.getBlockNumber();
+  }
+
+  /**
+   * Scans [fromBlock, toBlock] for `ProofAccepted` logs and returns them in a
+   * DB-ready shape, including the block timestamp (fetched per unique block).
+   * Uses the same adaptive/rate-limit-safe scanner as the agent registry scan.
+   */
+  async scanProofAcceptedLogs(
+    fromBlock: number,
+    toBlock: number
+  ): Promise<
+    Array<{
+      agentAddress: string;
+      proof: string;
+      amountWei: string;
+      rewardWei: string;
+      score: number;
+      txHash: string;
+      logIndex: number;
+      blockNumber: number;
+      blockTimestamp: Date;
+    }>
+  > {
+    if (!this.token || !this.provider || fromBlock > toBlock) return [];
+
+    const filter = this.token.filters.ProofAccepted();
+    const events = await this._queryFilterAdaptive(filter, fromBlock, toBlock);
+    if (events.length === 0) return [];
+
+    // Fetch each distinct block's timestamp once, not once per event.
+    const blockNumbers = [...new Set(events.map((e) => e.blockNumber))];
+    const blockTimestamps = new Map<number, Date>();
+    for (const bn of blockNumbers) {
+      const block = await this.provider.getBlock(bn);
+      blockTimestamps.set(bn, block ? new Date(block.timestamp * 1000) : new Date());
+    }
+
+    return events.map((e) => ({
+      agentAddress: (e.args.agent as string).toLowerCase(),
+      proof: e.args.proof as string,
+      amountWei: (e.args.amount as bigint).toString(),
+      rewardWei: (e.args.reward as bigint).toString(),
+      score: Number(e.args.score as bigint),
+      txHash: e.transactionHash,
+      logIndex: e.index,
+      blockNumber: e.blockNumber,
+      blockTimestamp: blockTimestamps.get(e.blockNumber) ?? new Date(),
+    }));
+  }
+
   // ── Connection lifecycle ────────────────────────────────────────────────────
 
   private async _tryConnect(): Promise<void> {

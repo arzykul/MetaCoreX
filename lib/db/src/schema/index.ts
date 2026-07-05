@@ -1,5 +1,6 @@
 export * from "./tasks";
 export * from "./agent_tasks";
+export * from "./agent_proofs";
 export * from "./notes";
 export * from "./reminders";
 export * from "./chat_messages";
