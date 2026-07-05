@@ -17,7 +17,24 @@ interface IFunctionsRouter {
 contract ARZYG_ERC20_AI is ERC20, AccessControl {
     bytes32 public constant RESERVE_ROLE = keccak256("RESERVE_ROLE");
     bytes32 public constant DEV_ADMIN_ROLE = keccak256("DEV_ADMIN_ROLE");
-    
+
+    /// @notice Hard, immutable ceiling on total supply across every mint path
+    /// (constructor, aiMint/birthToken oracle path, submitProof). Enforced in
+    /// `_update` so it can never be bypassed by a new mint path added later.
+    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10 ** 18;
+
+    /// @notice Total AI-driven mint volume (submitProof + birthToken) allowed
+    /// per UTC day, across all agents combined. Admin-configurable.
+    uint256 public dailyMintLimit = 10_000 * 10 ** 18;
+
+    /// @notice Per-agent AI-driven mint volume allowed per UTC day. Admin-configurable.
+    uint256 public agentDailyCap = 1_000 * 10 ** 18;
+
+    /// @dev UTC day epoch (block.timestamp / 1 days) => total AI-minted that day.
+    mapping(uint256 => uint256) public mintedInDay;
+    /// @dev agent => UTC day epoch => amount that agent AI-minted that day.
+    mapping(address => mapping(uint256 => uint256)) public agentMintedInDay;
+
     address public reserve;
     address public ownerAddress;
     address public functionsRouter;
@@ -54,6 +71,8 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
     event AgentRegistered(address indexed agent, string name, string description, uint256 registeredAt);
     event ProofAccepted(address indexed agent, string proof, uint256 amount, uint256 score, uint256 reward);
     event ProofRejected(address indexed agent, string proof, string reason);
+    event DailyMintLimitChanged(uint256 oldLimit, uint256 newLimit);
+    event AgentDailyCapChanged(uint256 oldCap, uint256 newCap);
 
     constructor(
         uint256 initialSupply,
@@ -94,6 +113,44 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
         _grantRole(RESERVE_ROLE, newReserve);
 
         emit ReserveChanged(old, newReserve);
+    }
+
+    function setDailyMintLimit(uint256 newLimit) external onlyOwner {
+        require(newLimit > 0, "Limit must be positive");
+        uint256 old = dailyMintLimit;
+        dailyMintLimit = newLimit;
+        emit DailyMintLimitChanged(old, newLimit);
+    }
+
+    function setAgentDailyCap(uint256 newCap) external onlyOwner {
+        require(newCap > 0, "Cap must be positive");
+        uint256 old = agentDailyCap;
+        agentDailyCap = newCap;
+        emit AgentDailyCapChanged(old, newCap);
+    }
+
+    /// @dev Enforces both the global daily mint limit and the per-agent daily
+    /// cap for AI-driven minting (submitProof + birthToken), then records the
+    /// usage. MAX_SUPPLY is enforced separately in `_update` for every mint
+    /// path, including this one.
+    function _enforceDailyQuota(address agent, uint256 amount) internal {
+        uint256 day = block.timestamp / 1 days;
+        require(mintedInDay[day] + amount <= dailyMintLimit, "Daily mint limit exceeded");
+        require(agentMintedInDay[agent][day] + amount <= agentDailyCap, "Agent daily cap exceeded");
+        mintedInDay[day] += amount;
+        agentMintedInDay[agent][day] += amount;
+    }
+
+    /// @dev Single choke point for every mint/burn/transfer (OZ v5 ERC20 hook).
+    /// Blocks any mint (from == address(0)) that would push totalSupply past
+    /// MAX_SUPPLY — applies uniformly to the constructor mint, the oracle
+    /// (birthToken) path, and submitProof, so a future mint path can never
+    /// bypass the ceiling by omission.
+    function _update(address from, address to, uint256 value) internal virtual override {
+        if (from == address(0)) {
+            require(totalSupply() + value <= MAX_SUPPLY, "MAX_SUPPLY exceeded");
+        }
+        super._update(from, to, value);
     }
 
     function requestUsefulness(
@@ -151,6 +208,8 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
         uint256 feeAmount = (_amount * protocolFeePercent) / 100;
         uint256 agentReward = _amount - feeAmount;
 
+        _enforceDailyQuota(_agent, _amount);
+
         _mint(_agent, agentReward);
         _mint(ownerAddress, feeAmount);
 
@@ -180,6 +239,7 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
         Agent storage agent = agents[msg.sender];
         require(agent.isActive, "Agent not registered");
         require(amount > 0, "Amount must be positive");
+        require(score <= 10, "Score out of range");
 
         if (score == 0) {
             emit ProofRejected(msg.sender, proof, "Score too low");
@@ -188,6 +248,8 @@ contract ARZYG_ERC20_AI is ERC20, AccessControl {
 
         uint256 reward = (amount * score) / 10;
         require(reward > 0, "Reward too small");
+
+        _enforceDailyQuota(msg.sender, reward);
 
         agent.totalEarned += reward;
         agent.tasksCompleted += 1;

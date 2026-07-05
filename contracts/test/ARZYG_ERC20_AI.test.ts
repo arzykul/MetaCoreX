@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { ARZYG_ERC20_AI, MockFunctionsRouter } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
@@ -8,7 +9,7 @@ const DON_ID = ethers.zeroPadBytes(ethers.toUtf8Bytes("fun-test-1"), 32) as `0x$
 const SUBSCRIPTION_ID = 1n;
 const MINT_AMOUNT = ethers.parseEther("1000"); // 1 000 ARZYG requested per proof
 
-describe("ARZYG_ERC20_AI — v2.1", () => {
+describe("ARZYG_ERC20_AI — v2.2", () => {
   let token: ARZYG_ERC20_AI;
   let router: MockFunctionsRouter;
   let deployer: HardhatEthersSigner;
@@ -240,6 +241,155 @@ describe("ARZYG_ERC20_AI — v2.1", () => {
       await expect(
         token.connect(stranger).changeReserve(stranger.address)
       ).to.be.reverted;
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Supply cap, daily mint limit, per-agent daily cap
+  // ────────────────────────────────────────────────────────────────────────────
+
+  describe("submitProof — score validation", () => {
+    beforeEach(async () => {
+      await token.connect(agent).registerAgent("Agent A", "desc");
+    });
+
+    it("reverts when score > 10", async () => {
+      await expect(
+        token.connect(agent).submitProof("proof", ethers.parseEther("10"), 11n)
+      ).to.be.revertedWith("Score out of range");
+    });
+
+    it("allows score == 10", async () => {
+      await expect(
+        token.connect(agent).submitProof("proof", ethers.parseEther("10"), 10n)
+      ).to.emit(token, "ProofAccepted");
+    });
+  });
+
+  describe("MAX_SUPPLY enforcement", () => {
+    it("reverts a submitProof mint that would push totalSupply past MAX_SUPPLY", async () => {
+      await token.connect(agent).registerAgent("Agent A", "desc");
+
+      // Raise the daily caps out of the way so the MAX_SUPPLY check is what
+      // actually reverts (isolates the specific guard under test).
+      await token.connect(deployer).setDailyMintLimit(ethers.MaxUint256 / 2n);
+      await token.connect(deployer).setAgentDailyCap(ethers.MaxUint256 / 2n);
+
+      const maxSupply = await token.MAX_SUPPLY();
+      const totalSupply = await token.totalSupply();
+      const remaining = maxSupply - totalSupply;
+
+      // reward = (amount * score) / 10; with score=10, reward == amount, so
+      // pushing `amount` 1 token past `remaining` is enough to exceed MAX_SUPPLY.
+      const amount = remaining + ethers.parseEther("1");
+      await expect(
+        token.connect(agent).submitProof("proof", amount, 10n)
+      ).to.be.revertedWith("MAX_SUPPLY exceeded");
+    });
+  });
+
+  describe("Daily mint limit (global)", () => {
+    beforeEach(async () => {
+      await token.connect(agent).registerAgent("Agent A", "desc");
+      await token.connect(stranger).registerAgent("Agent B", "desc");
+      // Widen the per-agent cap so only the global daily limit is exercised.
+      await token.connect(deployer).setAgentDailyCap(ethers.parseEther("100000"));
+    });
+
+    it("reverts once the combined daily mint limit is exhausted", async () => {
+      const dailyLimit = await token.dailyMintLimit();
+
+      // First proof consumes most of the daily limit (reward = amount, score=10).
+      const firstAmount = dailyLimit - ethers.parseEther("1");
+      await token.connect(agent).submitProof("proof-1", firstAmount, 10n);
+
+      // A second proof from a different agent that would push the day's total
+      // mint volume past dailyMintLimit must revert.
+      await expect(
+        token.connect(stranger).submitProof("proof-2", ethers.parseEther("100"), 10n)
+      ).to.be.revertedWith("Daily mint limit exceeded");
+    });
+
+    it("resets the global counter after a UTC day passes", async () => {
+      const dailyLimit = await token.dailyMintLimit();
+      await token.connect(agent).submitProof("proof-1", dailyLimit - ethers.parseEther("1"), 10n);
+
+      await time.increase(86400);
+
+      await expect(
+        token.connect(stranger).submitProof("proof-2", ethers.parseEther("100"), 10n)
+      ).to.emit(token, "ProofAccepted");
+    });
+  });
+
+  describe("Per-agent daily cap", () => {
+    beforeEach(async () => {
+      await token.connect(agent).registerAgent("Agent A", "desc");
+      // Widen the global limit so only the per-agent cap is exercised.
+      await token.connect(deployer).setDailyMintLimit(ethers.parseEther("100000"));
+    });
+
+    it("reverts once a single agent exceeds its own daily cap, even under the global limit", async () => {
+      const agentCap = await token.agentDailyCap();
+
+      await token.connect(agent).submitProof("proof-1", agentCap - ethers.parseEther("1"), 10n);
+
+      await expect(
+        token.connect(agent).submitProof("proof-2", ethers.parseEther("100"), 10n)
+      ).to.be.revertedWith("Agent daily cap exceeded");
+    });
+
+    it("does not block a different agent from minting up to their own cap", async () => {
+      const agentCap = await token.agentDailyCap();
+      await token.connect(agent).submitProof("proof-1", agentCap - ethers.parseEther("1"), 10n);
+
+      await token.connect(stranger).registerAgent("Agent B", "desc");
+      await expect(
+        token.connect(stranger).submitProof("proof-2", ethers.parseEther("100"), 10n)
+      ).to.emit(token, "ProofAccepted");
+    });
+  });
+
+  describe("setDailyMintLimit / setAgentDailyCap", () => {
+    it("allows DEV_ADMIN_ROLE to update dailyMintLimit and emits an event", async () => {
+      const newLimit = ethers.parseEther("50000");
+      await expect(token.connect(deployer).setDailyMintLimit(newLimit))
+        .to.emit(token, "DailyMintLimitChanged");
+      expect(await token.dailyMintLimit()).to.equal(newLimit);
+    });
+
+    it("allows DEV_ADMIN_ROLE to update agentDailyCap and emits an event", async () => {
+      const newCap = ethers.parseEther("5000");
+      await expect(token.connect(deployer).setAgentDailyCap(newCap))
+        .to.emit(token, "AgentDailyCapChanged");
+      expect(await token.agentDailyCap()).to.equal(newCap);
+    });
+
+    it("reverts setDailyMintLimit when called by a non-admin", async () => {
+      await expect(
+        token.connect(stranger).setDailyMintLimit(ethers.parseEther("1"))
+      ).to.be.revertedWith("Not owner");
+    });
+
+    it("reverts setAgentDailyCap when called by a non-admin", async () => {
+      await expect(
+        token.connect(stranger).setAgentDailyCap(ethers.parseEther("1"))
+      ).to.be.revertedWith("Not owner");
+    });
+  });
+
+  describe("birthToken (oracle path) respects daily caps", () => {
+    it("reverts handleOracleFulfillment when the oracle mint would exceed the daily limit", async () => {
+      await token.connect(deployer).setDailyMintLimit(ethers.parseEther("500"));
+
+      await token
+        .connect(deployer)
+        .requestUsefulness(agent.address, "big task", ethers.parseEther("1000"));
+      const requestId = await router.lastRequestId();
+
+      await expect(
+        router.fulfillSuccess(await token.getAddress(), requestId, 5n)
+      ).to.be.revertedWith("Daily mint limit exceeded");
     });
   });
 });
