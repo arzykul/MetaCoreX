@@ -29,6 +29,7 @@ node_modules
 
 # auto-agent local identity (private key — never commit)
 scripts/.auto-agent-identity.json
+scripts/.pou-seed-identities.json
 
 # misc
 /.sass-cache

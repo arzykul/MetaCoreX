@@ -1,5 +1,6 @@
 - [pnpm workspace cwd in artifacts](pnpm-artifact-cwd.md) — process.cwd() inside artifact server = artifact dir, not workspace root; go up 2 levels.
 - [MetaCoreX Deployment State](metacorex-deployment.md) — live Sepolia addresses, secret status, pending Chainlink subscription + Etherscan verification; website shipped
+- [Resumable on-chain seeding scripts](resumable-onchain-scripts.md) — backgrounded processes die silently here; use bounded synchronous `timeout` runs + idempotent state files instead.
 - [RPC eth_getLogs block-range limits](rpc-log-scan-limits.md) — anchor scans at deployment block, chunk adaptively, back off on 429s.
 - [runTest base path routing](testing-artifact-base-path.md) — always navigate to full artifact prefix (e.g. /metacorex-site/), bare "/" can hit unrelated legacy content.
 - [Drizzle date_trunc/GROUP BY param binding](drizzle-sql-groupby-params.md) — bound `$n` params in SELECT don't match same expression in GROUP BY; use sql.raw for validated enum values.
