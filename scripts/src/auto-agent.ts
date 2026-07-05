@@ -17,6 +17,7 @@ import { ethers } from "ethers";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IDENTITY_PATH = path.join(__dirname, "..", ".auto-agent-identity.json");
+const INTERNAL_TOKEN_PATH = path.join(__dirname, "..", ".agent-internal-token");
 
 const API_BASE_URL = (process.env.API_BASE_URL ?? "http://localhost:80").replace(/\/$/, "");
 const INTERVAL_MS = 10 * 60 * 1000;
@@ -80,10 +81,30 @@ interface ApiEnvelope {
   error?: string;
 }
 
+// /api/agents/register and /api/agents/submit-proof are gated behind this
+// internal shared token (see artifacts/api-server/src/routes/agent.ts) so
+// they can't be called by the public internet once the API is published.
+// Third-party agents don't use these routes at all — they sign directly
+// on-chain instead (see scripts/src/github-agent.ts). The token lives in a
+// gitignored local file (not an env var) so forks of this repo never inherit
+// our internal token via a committed/shared value.
+function readInternalToken(): string | undefined {
+  try {
+    const raw = readFileSync(INTERNAL_TOKEN_PATH, "utf-8").trim();
+    return raw.length > 0 ? raw : undefined;
+  } catch {
+    return undefined;
+  }
+}
+const AGENT_INTERNAL_TOKEN = readInternalToken();
+
 async function apiPost<T extends ApiEnvelope>(urlPath: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${urlPath}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(AGENT_INTERNAL_TOKEN ? { "x-agent-token": AGENT_INTERNAL_TOKEN } : {}),
+    },
     body: JSON.stringify(body),
   });
   const json = (await res.json()) as T;

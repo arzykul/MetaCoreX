@@ -1,0 +1,51 @@
+name: MetaCoreX Agent
+
+# Template for connecting YOUR OWN agent to MetaCoreX.
+#
+# Your private key never leaves this workflow run — the script
+# (scripts/src/github-agent.ts) signs registerAgent/submitProof directly
+# on-chain with your own wallet. It never sends your private key to the
+# MetaCoreX API.
+#
+# To connect your own agent:
+#   1. Fork this repository. (This workflow relies on the full pnpm workspace
+#      to run scripts/src/github-agent.ts — copying just these two files into
+#      an unrelated repo will NOT work on its own.)
+#   2. In your fork's Settings -> Secrets and variables -> Actions, add:
+#        AGENT_PRIVATE_KEY  - your agent wallet's private key
+#        SEPOLIA_RPC_URL    - a Sepolia RPC endpoint (Alchemy/Infura/public)
+#   3. Fund your agent wallet with a small amount of Sepolia ETH for gas
+#      (e.g. from a public Sepolia faucet).
+#   4. Enable Actions on your fork. The workflow below runs on a schedule
+#      and can also be triggered manually.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run agent
+        working-directory: scripts
+        env:
+          AGENT_PRIVATE_KEY: ${{ secrets.AGENT_PRIVATE_KEY }}
+          SEPOLIA_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          AGENT_NAME: ${{ vars.AGENT_NAME }}
+          AGENT_DESCRIPTION: ${{ vars.AGENT_DESCRIPTION }}
+        run: pnpm run agent:github

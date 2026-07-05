@@ -41,13 +41,37 @@ Generates its own wallet on first run and persists it to a gitignored local JSON
 
 **How to apply:** Reuse this local-identity-file pattern for any future autonomous script that needs a persistent on-chain identity but doesn't warrant a user-managed secret.
 
-## Server-side privateKey API routes are a known risk
+## Server-side privateKey API routes are gated (internal-only, file-based token — NOT an env var)
 
-`/api/agents/register` and `/api/agents/submit-proof` on the api-server still accept a raw `privateKey` in the request body, unauthenticated. Kept intentionally because `scripts/src/auto-agent.ts` depends on them for server-side automation — the corporate website (`artifacts/metacorex-site`) does NOT use these routes (it signs client-side via the user's connected wallet instead).
+`/api/agents/register` and `/api/agents/submit-proof` still accept a raw `privateKey` in the request body (needed for `scripts/src/auto-agent.ts`'s server-side automation), gated behind an `x-agent-token` header compared (timing-safe) against a token read from a **gitignored local file**, `scripts/.agent-internal-token` — deliberately NOT a Replit env var/secret.
 
-**Why:** Removing them would break the automation script; the website was rebuilt to avoid needing them at all after a security review flagged private-key collection in the UI.
+**Why:** This repo's whole point is to be forked publicly (see the "bring your own agent" pattern below). An env var stored via `setEnvVars` lands in the git-tracked `.replit` file's `[userenv.shared]` block — anyone forking the repo would inherit our real internal token verbatim and the gate would be void. A gitignored file avoids that entirely. This mistake was made once and caught by architect review before publishing; don't repeat it for any "internal-only, app-generated, not a user secret" value in a repo meant to be forked/public.
 
-**How to apply:** Before any production deployment, auth-gate or localhost-restrict these routes rather than exposing raw-private-key endpoints publicly.
+**How to apply:** Never point third-party/external agents at these two routes — they should sign on-chain directly instead (see below). For any future internal-only credential in a publicly-forkable repo, default to a gitignored local file, not `setEnvVars`.
+
+## Third-party "bring your own agent" pattern (GitHub Actions)
+
+External agents connect without ever sharing a private key with us: `scripts/src/github-agent.ts` + `.github/workflows/agent.yml` sign `registerAgent`/`submitProof` directly on-chain with the operator's own wallet (their own `AGENT_PRIVATE_KEY` GitHub secret, in their own fork), using a minimal inline ABI and the contract address fetched at runtime from public `GET /api/contract/info`. The only API calls made are public/keyless: contract info + the `/api/agent-tasks/*` task marketplace (list/assign/complete-by-txHash).
+
+**Why:** `registerAgent(name, description)` and `submitProof(proof, amount, score)` on `ARZYG_ERC20_AI.sol` are fully permissionless `external` functions (no `onlyRole`/access control) — any wallet can call them directly, so there's no need to route third parties through our server or have them trust us with their key at all.
+
+**How to apply:** Point third-party developers at forking the *whole* repo (the workflow needs the full pnpm workspace to run `scripts/src/github-agent.ts` — copying just 2 files into a foreign repo doesn't work standalone) and setting `AGENT_PRIVATE_KEY`/`SEPOLIA_RPC_URL`/`API_BASE_URL` as their own repo secrets/variables. `API_BASE_URL` must be the real published production URL — verify with `getDeploymentInfo()` once deployed rather than guessing a domain.
+
+## verifyProofTx must scope logs to the token contract address
+
+`contractService.verifyProofTx` (used by the `/api/agent-tasks/complete/:id` flow to trust a client-signed on-chain tx) parses every log in the receipt with the token's ABI but must also check `log.address` equals the deployed token contract address before trusting a parsed `ProofAccepted`/`ProofRejected` event.
+
+**Why:** `ethers.Interface.parseLog` will happily "parse" a log emitted by *any* contract as long as the topic0 signature matches — a malicious multi-call tx that also calls an attacker-deployed contract emitting a fake `ProofAccepted(agent, reward)` event would otherwise be accepted as valid proof of a real mint. Found via architect review before this flow was exposed to third-party callers.
+
+**How to apply:** Any code that parses `receipt.logs` for a specific known contract's events must filter by `log.address` first, not just by successfully parsing the ABI. Also enforce txHash uniqueness at the call-site (e.g. one task-completion per txHash) since the contract has no concept of "tasks" and the same accepted proof tx could otherwise be replayed against multiple DB rows.
+
+## submitProof has no supply cap or per-call limit — known open risk
+
+Unlike `aiMint` (role-gated, has a daily quota), the ARZY-G contract's permissionless `submitProof(proof, amount, score)` mints `amount * score / 10` to the caller with **no per-call cap, no daily quota, and no total-supply ceiling** anywhere in the contract (confirmed by grep — no `MAX_SUPPLY`/cap logic exists at all, contradicting an earlier docs claim of a "hard 1 billion supply ceiling").
+
+**Why:** Publishing the API + advertising a public "bring your own agent" GitHub Actions template turns this from a theoretical flaw into a documented, one-click way for anyone to mint unlimited ARZY-G. Flagged by architect review; the user was asked how to proceed (see conversation) rather than silently shipping a contract fix or silently ignoring it.
+
+**How to apply:** Before treating ARZY-G as having any real (non-testnet) value, this needs a contract-level fix — e.g. a `MAX_SUPPLY` check in `_mint`/`submitProof` and a per-agent per-day cap on `submitProof` mirroring `aiMint`'s quota — which requires a redeploy + re-registering agents. Don't assume this is fixed just because `aiMint` has a quota; they are separate code paths.
 
 ## Seed data lives in both code and the already-migrated DB
 

@@ -50,7 +50,19 @@ MetaCoreX ARZY-G is an ERC-20 token with an AI integration layer:
 - `aiMint`: AI operators can mint within a configurable daily cap
 - `aiTransfer`: AI agents can execute transfers on behalf of users (with approval)
 - Emergency pause/unpause for circuit-breaker safety
-- Hard 1 billion token supply ceiling enforced on-chain
+
+**Known limitation:** `aiMint` (role-gated) enforces a daily quota, but the permissionless `submitProof` mint path (`reward = amount * score / 10`, self-reported by the caller) has no per-call cap, no daily quota, and no total-supply ceiling anywhere in the contract — any registered wallet can mint an unbounded amount of ARZY-G by calling `submitProof` directly. There is currently no hard supply cap on-chain at all. Acceptable for Sepolia testnet demos, but must be fixed (e.g. a `MAX_SUPPLY` check plus a sane per-call/day cap on `submitProof`, mirroring `aiMint`'s quota) before this token has any real/mainnet value.
+
+## Connecting your own agent via GitHub
+
+External developers can connect their own AI agent to MetaCoreX without ever sharing a private key with us:
+
+1. Fork this repo. (The GitHub Actions workflow runs `scripts/src/github-agent.ts` inside the full pnpm workspace — copying just those two files into an unrelated repo will not work standalone.)
+2. Add two GitHub Actions secrets in your fork: `AGENT_PRIVATE_KEY` (your agent wallet) and `SEPOLIA_RPC_URL` (any Sepolia RPC endpoint), plus an `API_BASE_URL` repo variable pointing at the published MetaCoreX API.
+3. Fund that wallet with a little Sepolia ETH for gas from a public faucet.
+4. Enable Actions — the scheduled workflow registers your agent and submits proof-of-work directly on-chain with your own key.
+
+The script only ever calls the public parts of the MetaCoreX API (contract info, task marketplace). `registerAgent`/`submitProof` are called directly on-chain by the agent's own wallet — never sent to our server. The two routes that do accept a raw private key (`/api/agents/register`, `/api/agents/submit-proof`) are internal-only, gated by a token in the gitignored `scripts/.agent-internal-token` file (never an env var, since forks of this repo must never inherit it), and reserved for our own `scripts/src/auto-agent.ts` automation; third-party agents should not use them.
 
 ## User preferences
 

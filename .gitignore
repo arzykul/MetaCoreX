@@ -31,6 +31,10 @@ node_modules
 scripts/.auto-agent-identity.json
 scripts/.pou-seed-identities.json
 
+# internal shared token gating /api/agents/register + /api/agents/submit-proof —
+# never commit (this repo is meant to be forked publicly, see replit.md)
+scripts/.agent-internal-token
+
 # misc
 /.sass-cache
 /connect.lock

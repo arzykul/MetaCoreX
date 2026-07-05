@@ -294,11 +294,19 @@ class ContractService {
     const receipt = await this.provider.getTransactionReceipt(txHash);
     if (!receipt) return null;
 
+    const tokenAddress = (this.token.target as string).toLowerCase();
+
     let accepted = false;
     let reward: string | undefined;
     let reason: string | undefined;
 
     for (const log of receipt.logs) {
+      // Only trust events emitted BY the ARZY-G token contract itself. Without
+      // this check, an attacker could deploy their own contract that emits a
+      // fake `ProofAccepted(agent, reward)` event in the same transaction and
+      // have it accepted as proof of a real on-chain mint.
+      if (log.address.toLowerCase() !== tokenAddress) continue;
+
       let parsed: ethers.LogDescription | null = null;
       try {
         parsed = this.token.interface.parseLog(log);

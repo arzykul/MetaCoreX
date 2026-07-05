@@ -1,8 +1,36 @@
-import { Router, type IRouter } from "express";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { timingSafeEqual } from "node:crypto";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { ethers } from "ethers";
 import { contractService } from "../services/contractService.js";
 
 const router: IRouter = Router();
+
+// process.cwd() when the server runs = artifacts/api-server/ (see contractService.ts).
+const _workspaceRoot = resolve(process.cwd(), "..", "..");
+const INTERNAL_TOKEN_PATH = resolve(_workspaceRoot, "scripts", ".agent-internal-token");
+
+// Read fresh on every request (not cached at module load) so rotating the
+// token file doesn't require a server restart. This file is generated
+// locally and gitignored — NOT a env var/secret — because forks of this repo
+// (the whole point of the third-party agent pattern) must never inherit our
+// internal token via a committed value.
+function readInternalToken(): string | null {
+  try {
+    const raw = readFileSync(INTERNAL_TOKEN_PATH, "utf-8").trim();
+    return raw.length > 0 ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function timingSafeTokenEqual(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -18,12 +46,41 @@ function parseBigIntField(value: unknown): bigint | null {
   }
 }
 
+// These two routes accept a raw private key in the request body so our own
+// `scripts/src/auto-agent.ts` can sign server-side. That's an unacceptable
+// custody model for the public internet — anyone could POST any key here
+// once the API is publicly reachable. Third-party/external agents should
+// NEVER use these routes; they sign registerAgent/submitProof directly
+// on-chain with their own wallet instead (see scripts/src/github-agent.ts).
+// This gate restricts these two routes to callers who know our internal
+// shared token, so only our own automation can still use them.
+function requireInternalAgentToken(req: Request, res: Response): boolean {
+  const expected = readInternalToken();
+  if (!expected) {
+    res.status(503).json({ ok: false, error: "Internal agent routes are not configured" });
+    return false;
+  }
+  const provided = req.headers["x-agent-token"];
+  if (typeof provided !== "string" || !timingSafeTokenEqual(provided, expected)) {
+    res.status(403).json({
+      ok: false,
+      error:
+        "This route is restricted to internal automation. Third-party agents should register/submit proof directly on-chain instead of sending a private key to this API.",
+    });
+    return false;
+  }
+  return true;
+}
+
 /**
  * POST /api/agents/register
  * Registers a new AI agent on-chain.
  * Body: { name: string, description: string, privateKey: string }
+ * INTERNAL ONLY — requires x-agent-token header. Third-party agents must call
+ * registerAgent directly on-chain with their own wallet (see scripts/src/github-agent.ts).
  */
 router.post("/agents/register", async (req, res): Promise<void> => {
+  if (!requireInternalAgentToken(req, res)) return;
   if (!contractService.connected) {
     res.status(503).json({ ok: false, error: "Blockchain not connected" });
     return;
@@ -65,8 +122,11 @@ router.post("/agents/register", async (req, res): Promise<void> => {
  * agentAddress is optional — if omitted, it is derived from privateKey (submitProof always
  * credits msg.sender on-chain, so the caller's address IS the agent address).
  * reward = amount * score / 10 (enforced on-chain)
+ * INTERNAL ONLY — requires x-agent-token header. Third-party agents must call
+ * submitProof directly on-chain with their own wallet (see scripts/src/github-agent.ts).
  */
 router.post("/agents/submit-proof", async (req, res): Promise<void> => {
+  if (!requireInternalAgentToken(req, res)) return;
   if (!contractService.connected) {
     res.status(503).json({ ok: false, error: "Blockchain not connected" });
     return;

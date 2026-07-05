@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "agent:auto": "tsx ./src/auto-agent.ts",
+    "agent:github": "tsx ./src/github-agent.ts",
     "seed:pou": "tsx ./src/seed-pou-demo.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

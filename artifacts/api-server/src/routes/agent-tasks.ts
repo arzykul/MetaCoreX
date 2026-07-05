@@ -303,6 +303,18 @@ router.post("/agent-tasks/complete/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  // Prevent a single on-chain proof tx from being reused to "complete" more
+  // than one marketplace task (the contract itself has no notion of tasks,
+  // so this has to be enforced here).
+  const [existingWithTx] = await db
+    .select({ id: agentTasksTable.id })
+    .from(agentTasksTable)
+    .where(and(eq(agentTasksTable.txHash, txHash), sql`${agentTasksTable.id} != ${id}`));
+  if (existingWithTx) {
+    res.status(400).json({ ok: false, error: "This transaction has already been used to complete another task" });
+    return;
+  }
+
   let rewardWei: string | undefined;
   try {
     const verification = await contractService.verifyProofTx(txHash, agentAddress);
