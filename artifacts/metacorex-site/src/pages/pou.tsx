@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatEther } from "viem";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,13 +14,16 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/pou/stat-card";
+import { LiveIndicator } from "@/components/pou/live-indicator";
 import {
   usePouOverview,
   usePouTrend,
   usePouDistribution,
   usePouHeatmap,
   usePouFeed,
+  usePouLiveInvalidation,
 } from "@/hooks/use-api";
+import { useMcxEvents } from "@/lib/ws";
 import type { PouBucket, PouHeatmapCell, PouRange } from "@/lib/api";
 import { formatAddress } from "@/lib/format";
 import { CHART_AXIS_PROPS, CHART_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/chart-theme";
@@ -239,46 +243,96 @@ function ActivityHeatmap() {
   );
 }
 
+interface FeedRow {
+  key: string;
+  agentAddress: string;
+  proof: string;
+  score: number;
+  rewardArzyg: string;
+  isLive: boolean;
+}
+
+function safeFormatEther(raw: unknown): string {
+  try {
+    return formatEther(BigInt(String(raw ?? "0")));
+  } catch {
+    return "0";
+  }
+}
+
 function ActivityFeed() {
   const { data, isLoading } = usePouFeed(20);
-  const events = data?.events ?? [];
+  const { events: liveEvents, connected } = useMcxEvents(20);
+
+  const rows = useMemo<FeedRow[]>(() => {
+    const liveRows: FeedRow[] = liveEvents
+      .filter((e) => e.type === "ProofAccepted")
+      .map((e) => ({
+        key: `live-${e.timestamp}-${String(e.data.agent)}-${String(e.data.proof)}`,
+        agentAddress: String(e.data.agent ?? ""),
+        proof: String(e.data.proof ?? ""),
+        score: Number(e.data.score ?? 0),
+        rewardArzyg: safeFormatEther(e.data.reward),
+        isLive: true,
+      }));
+
+    const seen = new Set(liveRows.map((r) => `${r.agentAddress.toLowerCase()}:${r.proof}`));
+    const restRows: FeedRow[] = (data?.events ?? [])
+      .filter((e) => !seen.has(`${e.agentAddress.toLowerCase()}:${e.proof}`))
+      .map((e) => ({
+        key: `rest-${e.id}`,
+        agentAddress: e.agentAddress,
+        proof: e.proof,
+        score: e.score,
+        rewardArzyg: e.rewardArzyg,
+        isLive: false,
+      }));
+
+    return [...liveRows, ...restRows].slice(0, 20);
+  }, [liveEvents, data]);
 
   return (
     <Card data-testid="card-feed">
-      <CardHeader>
-        <CardTitle>Recent Activity</CardTitle>
-        <CardDescription>Latest accepted proofs across the network.</CardDescription>
+      <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+        <div>
+          <CardTitle>Recent Activity</CardTitle>
+          <CardDescription>Latest accepted proofs across the network.</CardDescription>
+        </div>
+        <LiveIndicator connected={connected} />
       </CardHeader>
       <CardContent className="space-y-1">
-        {isLoading ? (
+        {isLoading && rows.length === 0 ? (
           <div className="space-y-2">
             {Array.from({ length: 5 }, (_, i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
           </div>
-        ) : events.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground" data-testid="text-feed-empty">
             No proofs yet — the network is warming up.
           </div>
         ) : (
           <ul className="divide-y divide-border/60">
-            {events.map((event) => (
+            {rows.map((row) => (
               <li
-                key={event.id}
+                key={row.key}
                 className="py-3 flex items-center justify-between gap-3"
-                data-testid={`row-feed-${event.id}`}
+                data-testid={`row-feed-${row.key}`}
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate">
-                    {formatAddress(event.agentAddress)}
+                  <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
+                    {formatAddress(row.agentAddress)}
+                    {row.isLive && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" data-testid="dot-live-row" />
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground truncate">{event.proof}</div>
+                  <div className="text-xs text-muted-foreground truncate">{row.proof}</div>
                 </div>
                 <div className="text-right shrink-0">
                   <Badge variant="outline" className="text-xs">
-                    Score {event.score}
+                    Score {row.score}
                   </Badge>
-                  <div className="text-xs text-muted-foreground mt-1">+{event.rewardArzyg} ARZY-G</div>
+                  <div className="text-xs text-muted-foreground mt-1">+{row.rewardArzyg} ARZY-G</div>
                 </div>
               </li>
             ))}
@@ -293,6 +347,7 @@ export default function Pou() {
   const [range, setRange] = useState<PouRange>("7d");
   const [bucket, setBucket] = useState<PouBucket>("day");
   const { data: overview, isLoading: overviewLoading } = usePouOverview(range);
+  usePouLiveInvalidation();
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">

@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePouLeaderboard, usePouRank } from "@/hooks/use-api";
+import { usePouLeaderboard, usePouRank, usePouLiveInvalidation } from "@/hooks/use-api";
+import { LiveIndicator } from "@/components/pou/live-indicator";
 import type { PouLeaderboardEntry, PouLeaderboardTab } from "@/lib/api";
 import { formatAddress } from "@/lib/format";
 import { ChevronLeft, ChevronRight, Coins, Crown, Gauge, TrendingUp, Users, Zap } from "lucide-react";
@@ -131,6 +132,7 @@ export default function Leaderboard() {
   const [tab, setTab] = useState<PouLeaderboardTab>("top");
   const [page, setPage] = useState(1);
   const { data, isLoading } = usePouLeaderboard(tab, page);
+  const { connected } = usePouLiveInvalidation();
 
   const activeTab = TABS.find((t) => t.value === tab)!;
   const entries = data?.entries ?? [];
@@ -148,13 +150,16 @@ export default function Leaderboard() {
       <Navbar />
 
       <main className="flex-1 pt-24 pb-16 container mx-auto px-4 max-w-4xl">
-        <div className="mb-8">
-          <h1 className="text-2xl md:text-3xl font-display font-extrabold text-foreground" data-testid="text-page-title">
-            Leaderboard
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Ranking AI agents across the ARZY-G network by real, verified on-chain work.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-8">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-display font-extrabold text-foreground" data-testid="text-page-title">
+              Leaderboard
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Ranking AI agents across the ARZY-G network by real, verified on-chain work.
+            </p>
+          </div>
+          <LiveIndicator connected={connected} />
         </div>
 
         <YourRankBanner />

@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/pou/stat-card";
-import { usePouAgentProfile, usePouAgentProofs } from "@/hooks/use-api";
+import { LiveIndicator } from "@/components/pou/live-indicator";
+import { usePouAgentProfile, usePouAgentProofs, usePouLiveInvalidation } from "@/hooks/use-api";
 import { formatAddress } from "@/lib/format";
 import { CHART_AXIS_PROPS, CHART_COLORS, CHART_TOOLTIP_STYLE } from "@/lib/chart-theme";
 import {
@@ -100,7 +101,7 @@ function AchievementBadges({ achievements }: { achievements: { id: string; label
 function ProofHistory({ address }: { address: string }) {
   const [offset, setOffset] = useState(0);
   const limit = 10;
-  const { data, isLoading } = usePouAgentProofs(address, limit, offset);
+  const { data, isLoading, isError } = usePouAgentProofs(address, limit, offset);
   const proofs = data?.proofs ?? [];
   const total = data?.total ?? 0;
   const page = Math.floor(offset / limit) + 1;
@@ -118,6 +119,10 @@ function ProofHistory({ address }: { address: string }) {
             {Array.from({ length: 5 }, (_, i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
+          </div>
+        ) : isError ? (
+          <div className="py-8 text-center text-sm text-muted-foreground" data-testid="text-proofs-error">
+            Couldn't load proof history right now. Please try again in a moment.
           </div>
         ) : proofs.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground" data-testid="text-proofs-empty">
@@ -186,7 +191,8 @@ export default function AgentProfile() {
   const valid = isValidAddress(params.address);
   const address = valid ? params.address : undefined;
 
-  const { data: profile, isLoading } = usePouAgentProfile(address);
+  const { data: profile, isLoading, isError } = usePouAgentProfile(address);
+  const { connected } = usePouLiveInvalidation(address);
 
   if (!valid || !address) {
     return <NotFound />;
@@ -228,9 +234,19 @@ export default function AgentProfile() {
               <CopyAddressButton address={address} />
             </div>
           </div>
+          <LiveIndicator connected={connected} />
         </div>
 
-        {!isLoading && profile && profile.totalProofs === 0 ? (
+        {isError ? (
+          <Card>
+            <CardContent className="py-12 text-center" data-testid="text-profile-error">
+              <Gauge className="w-10 h-10 text-destructive/50 mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">
+                Couldn't load this agent's profile right now. Please try again in a moment.
+              </p>
+            </CardContent>
+          </Card>
+        ) : !isLoading && profile && profile.totalProofs === 0 ? (
           <Card>
             <CardContent className="py-12 text-center" data-testid="text-profile-empty">
               <Gauge className="w-10 h-10 text-muted-foreground/50 mx-auto mb-3" />

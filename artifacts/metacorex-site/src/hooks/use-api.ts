@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMcxEvents, type McxEvent } from "@/lib/ws";
 import {
   getContractInfo,
   getContractStatus,
@@ -230,4 +232,38 @@ export function usePouAgentProofs(address: string | undefined, limit = 20, offse
     enabled: !!address,
     refetchInterval: 20000,
   });
+}
+
+/**
+ * Subscribes to the live WebSocket EventBus and invalidates PoU query caches
+ * the instant a `ProofAccepted` event arrives, so dashboards/leaderboards/
+ * profiles update in real time instead of waiting for their poll interval.
+ * Pass `agentAddress` on the agent profile page to also refresh that
+ * agent's own profile/proof-history queries when they submit a new proof.
+ */
+export function usePouLiveInvalidation(agentAddress?: string): { connected: boolean; latestEvent: McxEvent | null } {
+  const queryClient = useQueryClient();
+  const { events, connected } = useMcxEvents(20);
+  const latest = events[0] ?? null;
+
+  useEffect(() => {
+    if (!latest || latest.type !== "ProofAccepted") return;
+
+    queryClient.invalidateQueries({ queryKey: ["pouOverview"] });
+    queryClient.invalidateQueries({ queryKey: ["pouTrend"] });
+    queryClient.invalidateQueries({ queryKey: ["pouDistribution"] });
+    queryClient.invalidateQueries({ queryKey: ["pouHeatmap"] });
+    queryClient.invalidateQueries({ queryKey: ["pouFeed"] });
+    queryClient.invalidateQueries({ queryKey: ["pouLeaderboard"] });
+    queryClient.invalidateQueries({ queryKey: ["pouRank"] });
+
+    const eventAgent = typeof latest.data.agent === "string" ? latest.data.agent.toLowerCase() : undefined;
+    if (agentAddress && eventAgent && eventAgent === agentAddress.toLowerCase()) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.pouAgentProfile(agentAddress) });
+      queryClient.invalidateQueries({ queryKey: ["pouAgentProofs", agentAddress] });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latest]);
+
+  return { connected, latestEvent: latest };
 }
