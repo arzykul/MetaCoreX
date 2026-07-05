@@ -335,3 +335,72 @@ export function getPouLeaderboard(tab: PouLeaderboardTab = "top", page = 1): Pro
 export function getPouRank(address: string): Promise<PouRank> {
   return apiFetch<PouRank>(`/api/pou/rank/${address}`);
 }
+
+export interface PouRadar {
+  speed: number;
+  quality: number;
+  consistency: number;
+  complexity: number;
+  impact: number;
+}
+
+export interface PouBestPerformance {
+  score: number;
+  blockTimestamp: string;
+  proof: string;
+}
+
+export interface PouTaskDistributionEntry {
+  category: string;
+  count: number;
+}
+
+export interface PouAchievement {
+  id: string;
+  label: string;
+}
+
+export interface PouAgentProfile {
+  address: string;
+  avgScore: number | null;
+  totalProofs: number;
+  totalEarnedArzyg: string;
+  currentStreakDays: number;
+  bestPerformance: PouBestPerformance | null;
+  radar: PouRadar | null;
+  taskDistribution: PouTaskDistributionEntry[];
+  achievements: PouAchievement[];
+  rank: number | null;
+}
+
+export interface PouAgentProof {
+  id: number;
+  proof: string;
+  score: number;
+  rewardArzyg: string;
+  txHash: string;
+  blockTimestamp: string;
+}
+
+export interface PouAgentProofsPage {
+  total: number;
+  limit: number;
+  offset: number;
+  proofs: PouAgentProof[];
+}
+
+/** GET /api/pou/agents/:address — full PoU profile for the agent page. */
+export function getPouAgentProfile(address: string): Promise<PouAgentProfile> {
+  return apiFetch<PouAgentProfile>(`/api/pou/agents/${address}`);
+}
+
+/** GET /api/pou/agents/:address/proofs?limit=&offset= — paginated proof history. */
+export function getPouAgentProofs(
+  address: string,
+  limit = 20,
+  offset = 0,
+): Promise<PouAgentProofsPage> {
+  return apiFetch<PouAgentProofsPage>(
+    `/api/pou/agents/${address}/proofs?limit=${limit}&offset=${offset}`,
+  );
+}

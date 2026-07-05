@@ -18,6 +18,8 @@ import {
   getPouFeed,
   getPouLeaderboard,
   getPouRank,
+  getPouAgentProfile,
+  getPouAgentProofs,
   type ListTasksParams,
   type PouRange,
   type PouBucket,
@@ -39,6 +41,9 @@ export const queryKeys = {
   pouFeed: (limit: number) => ["pouFeed", limit] as const,
   pouLeaderboard: (tab: PouLeaderboardTab, page: number) => ["pouLeaderboard", tab, page] as const,
   pouRank: (address: string) => ["pouRank", address] as const,
+  pouAgentProfile: (address: string) => ["pouAgentProfile", address] as const,
+  pouAgentProofs: (address: string, limit: number, offset: number) =>
+    ["pouAgentProofs", address, limit, offset] as const,
 };
 
 export function useContractInfo() {
@@ -206,5 +211,23 @@ export function usePouRank(address: string | undefined) {
     queryFn: () => getPouRank(address!),
     enabled: !!address,
     refetchInterval: 30000,
+  });
+}
+
+export function usePouAgentProfile(address: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.pouAgentProfile(address ?? ""),
+    queryFn: () => getPouAgentProfile(address!),
+    enabled: !!address,
+    refetchInterval: 20000,
+  });
+}
+
+export function usePouAgentProofs(address: string | undefined, limit = 20, offset = 0) {
+  return useQuery({
+    queryKey: queryKeys.pouAgentProofs(address ?? "", limit, offset),
+    queryFn: () => getPouAgentProofs(address!, limit, offset),
+    enabled: !!address,
+    refetchInterval: 20000,
   });
 }

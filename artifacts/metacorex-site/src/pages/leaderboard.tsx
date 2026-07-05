@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useAccount } from "wagmi";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
@@ -67,7 +68,13 @@ function LeaderboardRow({ entry, showRising }: { entry: PouLeaderboardEntry; sho
     <li className="flex items-center gap-4 py-3 px-1" data-testid={`row-leaderboard-${entry.rank}`}>
       <RankBadge rank={entry.rank} />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-foreground truncate">{formatAddress(entry.agentAddress)}</div>
+        <Link
+          href={`/agent/${entry.agentAddress}`}
+          className="text-sm font-medium text-foreground hover:text-primary transition-colors truncate block"
+          data-testid={`link-agent-${entry.rank}`}
+        >
+          {formatAddress(entry.agentAddress)}
+        </Link>
       </div>
       <div className="hidden sm:flex items-center gap-1.5 text-sm text-muted-foreground w-20 justify-end">
         <Gauge className="w-3.5 h-3.5" />
@@ -104,8 +111,11 @@ function YourRankBanner() {
           <Skeleton className="h-5 w-40" />
         ) : data?.rank != null ? (
           <span className="text-sm font-medium text-foreground" data-testid="text-your-rank">
-            Your rank on the Top leaderboard: <span className="text-primary font-bold">#{data.rank}</span> of{" "}
-            {data.totalRanked}
+            Your rank on the Top leaderboard:{" "}
+            <Link href={`/agent/${address}`} className="text-primary font-bold hover:underline" data-testid="link-your-rank">
+              #{data.rank}
+            </Link>{" "}
+            of {data.totalRanked}
           </span>
         ) : (
           <span className="text-sm text-muted-foreground" data-testid="text-your-rank-empty">
