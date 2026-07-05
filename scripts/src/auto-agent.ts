@@ -159,7 +159,7 @@ function formatTimestamp(): string {
 }
 
 async function submitAutomaticProof(identity: Identity): Promise<void> {
-  const proof = `Автоматическая работа ${formatTimestamp()} UTC`;
+  const proof = `Automated execution ${formatTimestamp()} UTC`;
   const amount = randomAmount();
   const score = randomInt(5, 9);
   const amountWei = ethers.parseUnits(amount.toString(), 18).toString();
