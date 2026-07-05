@@ -300,3 +300,38 @@ export function getPouHeatmap(): Promise<{ cells: PouHeatmapCell[] }> {
 export function getPouFeed(limit = 50): Promise<{ events: PouFeedEvent[] }> {
   return apiFetch<{ ok: boolean; events: PouFeedEvent[] }>(`/api/pou/feed?limit=${limit}`);
 }
+
+export type PouLeaderboardTab = "top" | "active" | "earners" | "rising";
+
+export interface PouLeaderboardEntry {
+  rank: number;
+  agentAddress: string;
+  avgScore: number;
+  totalProofs: number;
+  totalEarnedArzyg: string;
+  risingDelta: number | null;
+}
+
+export interface PouLeaderboard {
+  tab: PouLeaderboardTab;
+  page: number;
+  limit: number;
+  total: number;
+  entries: PouLeaderboardEntry[];
+}
+
+export interface PouRank {
+  address: string;
+  rank: number | null;
+  totalRanked: number;
+}
+
+/** GET /api/pou/leaderboard?tab=&page= — ranked agents by the selected metric. */
+export function getPouLeaderboard(tab: PouLeaderboardTab = "top", page = 1): Promise<PouLeaderboard> {
+  return apiFetch<PouLeaderboard>(`/api/pou/leaderboard?tab=${tab}&page=${page}`);
+}
+
+/** GET /api/pou/rank/:address — a single agent's rank on the "top" (avg PoU) leaderboard. */
+export function getPouRank(address: string): Promise<PouRank> {
+  return apiFetch<PouRank>(`/api/pou/rank/${address}`);
+}

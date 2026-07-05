@@ -15,6 +15,7 @@ import {
   Menu,
   MessageSquare,
   Newspaper,
+  Trophy,
   Users,
 } from "lucide-react";
 
@@ -24,6 +25,7 @@ const navLinks = [
   { label: "Submit Proof", href: "/dashboard?tab=proof", icon: FileCheck },
   { label: "Tasks", href: "/tasks", icon: ClipboardList },
   { label: "PoU Analytics", href: "/pou", icon: Activity },
+  { label: "Leaderboard", href: "/leaderboard", icon: Trophy },
   { label: "Earnings", href: "/dashboard?tab=analytics", icon: BarChart3 },
   { label: "FAQ", href: "/faq", icon: HelpCircle },
   { label: "Blog", href: "/blog", icon: Newspaper },

@@ -9,6 +9,7 @@ import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Tasks from "@/pages/tasks";
 import Pou from "@/pages/pou";
+import Leaderboard from "@/pages/leaderboard";
 import Faq from "@/pages/faq";
 import Blog from "@/pages/blog";
 import BlogPost from "@/pages/blog-post";
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/tasks" component={Tasks} />
       <Route path="/pou" component={Pou} />
+      <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/faq" component={Faq} />
       <Route path="/blog/:slug" component={BlogPost} />
       <Route path="/blog" component={Blog} />

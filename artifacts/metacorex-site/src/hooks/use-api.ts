@@ -16,9 +16,12 @@ import {
   getPouDistribution,
   getPouHeatmap,
   getPouFeed,
+  getPouLeaderboard,
+  getPouRank,
   type ListTasksParams,
   type PouRange,
   type PouBucket,
+  type PouLeaderboardTab,
 } from "@/lib/api";
 
 export const queryKeys = {
@@ -29,6 +32,13 @@ export const queryKeys = {
   tasks: (params: ListTasksParams) => ["tasks", params] as const,
   taskStats: ["taskStats"] as const,
   myTasks: (address: string) => ["myTasks", address] as const,
+  pouOverview: (range: PouRange) => ["pouOverview", range] as const,
+  pouTrend: (range: PouRange, interval: PouBucket) => ["pouTrend", range, interval] as const,
+  pouDistribution: ["pouDistribution"] as const,
+  pouHeatmap: ["pouHeatmap"] as const,
+  pouFeed: (limit: number) => ["pouFeed", limit] as const,
+  pouLeaderboard: (tab: PouLeaderboardTab, page: number) => ["pouLeaderboard", tab, page] as const,
+  pouRank: (address: string) => ["pouRank", address] as const,
 };
 
 export function useContractInfo() {
@@ -144,7 +154,7 @@ export function useVerifyTask() {
 
 export function usePouOverview(range: PouRange) {
   return useQuery({
-    queryKey: ["pouOverview", range],
+    queryKey: queryKeys.pouOverview(range),
     queryFn: () => getPouOverview(range),
     refetchInterval: 15000,
   });
@@ -152,7 +162,7 @@ export function usePouOverview(range: PouRange) {
 
 export function usePouTrend(range: PouRange, interval: PouBucket) {
   return useQuery({
-    queryKey: ["pouTrend", range, interval],
+    queryKey: queryKeys.pouTrend(range, interval),
     queryFn: () => getPouTrend(range, interval),
     refetchInterval: 30000,
   });
@@ -160,7 +170,7 @@ export function usePouTrend(range: PouRange, interval: PouBucket) {
 
 export function usePouDistribution() {
   return useQuery({
-    queryKey: ["pouDistribution"],
+    queryKey: queryKeys.pouDistribution,
     queryFn: getPouDistribution,
     refetchInterval: 60000,
   });
@@ -168,7 +178,7 @@ export function usePouDistribution() {
 
 export function usePouHeatmap() {
   return useQuery({
-    queryKey: ["pouHeatmap"],
+    queryKey: queryKeys.pouHeatmap,
     queryFn: getPouHeatmap,
     refetchInterval: 60000,
   });
@@ -176,8 +186,25 @@ export function usePouHeatmap() {
 
 export function usePouFeed(limit = 50) {
   return useQuery({
-    queryKey: ["pouFeed", limit],
+    queryKey: queryKeys.pouFeed(limit),
     queryFn: () => getPouFeed(limit),
     refetchInterval: 15000,
+  });
+}
+
+export function usePouLeaderboard(tab: PouLeaderboardTab, page = 1) {
+  return useQuery({
+    queryKey: queryKeys.pouLeaderboard(tab, page),
+    queryFn: () => getPouLeaderboard(tab, page),
+    refetchInterval: 20000,
+  });
+}
+
+export function usePouRank(address: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.pouRank(address ?? ""),
+    queryFn: () => getPouRank(address!),
+    enabled: !!address,
+    refetchInterval: 30000,
   });
 }
