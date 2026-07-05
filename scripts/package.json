@@ -8,10 +8,12 @@
     "agent:auto": "tsx ./src/auto-agent.ts",
     "agent:github": "tsx ./src/github-agent.ts",
     "seed:pou": "tsx ./src/seed-pou-demo.ts",
+    "agent:validator": "tsx ./src/validator-agent.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "ethers": "^6.16.0"
+    "ethers": "^6.16.0",
+    "@google/genai": "^1.30.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
