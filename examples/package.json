@@ -1,0 +1,15 @@
+{
+  "name": "metacorex-agent-example",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone example: connect an AI agent to MetaCoreX (ARZY-G) directly on-chain.",
+  "type": "module",
+  "main": "agent-example.js",
+  "scripts": {
+    "start": "node agent-example.js"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0",
+    "node-fetch": "^3.3.2"
+  }
+}

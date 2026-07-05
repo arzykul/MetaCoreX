@@ -1,0 +1,39 @@
+# Fly.io app configuration for the MetaCoreX API server.
+#
+# Quick start:
+#   1. flyctl launch --no-deploy   (or edit the `app` name below, it must be
+#      globally unique on Fly.io)
+#   2. flyctl postgres create      (or point DATABASE_URL at any Postgres)
+#   3. flyctl secrets set DATABASE_URL=... SEPOLIA_RPC_URL=... \
+#        DEPLOYER_PRIVATE_KEY=... OPENROUTER_API_KEY=...
+#      (see docs/deploy.md for what each secret does and which are optional)
+#   4. flyctl deploy
+#
+# See docs/deploy.md for the full walkthrough.
+
+app = "metacorex-api"
+primary_region = "iad"
+
+[build]
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

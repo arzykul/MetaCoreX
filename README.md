@@ -2,6 +2,8 @@
 
 > **Web3 / Web4 Infrastructure for the ARZY-G AI Token Ecosystem**
 
+[![Build](https://github.com/arzykul/MetaCoreX/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/arzykul/MetaCoreX/actions/workflows/build.yml)
+[![Tests](https://github.com/arzykul/MetaCoreX/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/arzykul/MetaCoreX/actions/workflows/test.yml)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?logo=solidity)](https://soliditylang.org)
 [![OpenZeppelin](https://img.shields.io/badge/OpenZeppelin-v5-4E5EE4?logo=openzeppelin)](https://openzeppelin.com/contracts)
 [![Hardhat](https://img.shields.io/badge/Hardhat-2.x-yellow?logo=ethereum)](https://hardhat.org)
@@ -10,6 +12,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 MetaCoreX is a full-stack Web3/Web4 infrastructure project built around the **ARZY-G ERC-20 AI token** — an on-chain token with an embedded AI integration layer, Chainlink Functions oracle support, and a real-time cyberpunk **Visual Core** operating dashboard.
+
+**Live deployment (Sepolia testnet):** [`0xC3f4231F619F8D22666d70aeaA5D43EA56498770`](https://sepolia.etherscan.io/address/0xC3f4231F619F8D22666d70aeaA5D43EA56498770)
+**Live dashboard (demo):** https://f20b0ef0-8feb-4dd9-9659-a3e88c053ecf-00-3dndk9nq6wn20.pike.replit.dev/ — deploy your own with [`docs/deploy.md`](docs/deploy.md) for a permanent URL.
 
 ---
 
@@ -24,6 +29,8 @@ MetaCoreX is a full-stack Web3/Web4 infrastructure project built around the **AR
 - [API Reference](#api-reference)
 - [Quick Start](#quick-start)
 - [Visual Core Dashboard](#visual-core-dashboard)
+- [Connect Your Own Agent](#connect-your-own-agent)
+- [Deployment](#deployment)
 - [Tech Stack](#tech-stack)
 
 ---
@@ -36,13 +43,10 @@ ARZY-G is an ERC-20 AI token with an on-chain intelligence layer. Unlike standar
 
 | Feature | Description |
 |---|---|
-| `aiMint` | AI operators mint tokens after a Chainlink oracle verifies a Proof of Usefulness score |
-| `birthToken` | Splits the minted reward into agent share (99%) and protocol reserve fee (1%) |
-| `aiTransfer` | AI agents execute ERC-20 transfers on behalf of users with pre-approval |
-| `Permit (EIP-2612)` | Gasless off-chain approvals via signed permit messages — ideal for AI pipelines |
-| `Emergency Pause` | Circuit-breaker `pause/unpause` controlled by `PAUSER_ROLE` |
-| `Daily Quota` | On-chain UTC day epoch limits for `AI_OPERATOR_ROLE` minting |
-| `Supply Cap` | Hard 1 billion token ceiling enforced in Solidity |
+| `registerAgent` / `submitProof` | Permissionless — any wallet registers itself and mints `amount * score / 10` by self-reporting a proof + score (0–10), no oracle round trip required |
+| `requestUsefulness` → `birthToken` | Oracle-verified path: a Chainlink Functions callback approves a proof (score ≥ 1) and mints, split 99% agent / 1% protocol reserve |
+| `Daily Quota` | Both mint paths share a global `dailyMintLimit` and a per-agent `agentDailyCap`, enforced on-chain via a UTC day epoch |
+| `Supply Cap` | Hard `MAX_SUPPLY` ceiling (1,000,000,000 ARZY-G) enforced in every mint path via `_update` |
 
 ---
 
@@ -72,14 +76,14 @@ AI Agent                  ARZY-G Contract           Chainlink Functions
 
 ### PoU Score
 
-The oracle evaluates the AI agent's submitted proof (a natural-language task description) and returns a **PoU Score** — an integer from `0` to `10`:
+Every submitted proof carries a **PoU Score** — an integer from `0` to `10` — but it means slightly different things on the two mint paths:
 
-| Score | Meaning | Result |
+| Path | Score | Result |
 |---|---|---|
-| `0` | No useful work detected | `ProofRejected` — no mint |
-| `1–4` | Partial usefulness | `TokenBirthed` — reduced cap |
-| `5–7` | Solid contribution | `TokenBirthed` — standard mint |
-| `8–10` | Exceptional output | `TokenBirthed` — full cap |
+| `submitProof` (direct, self-reported) | `0` | `ProofRejected` — no mint |
+| `submitProof` (direct, self-reported) | `1–10` | `ProofAccepted` — mints `amount * score / 10` |
+| `requestUsefulness` → oracle callback | `0` | `OracleProofRejected` — no mint |
+| `requestUsefulness` → oracle callback | `≥ 1` | `TokenBirthed` — mints the full pre-agreed amount (99% agent / 1% reserve) |
 
 The PoU Score is displayed in real time on the Visual Core Dashboard as a progress bar.
 
@@ -87,23 +91,23 @@ The PoU Score is displayed in real time on the Visual Core Dashboard as a progre
 
 | Role | Capability |
 |---|---|
-| `DEFAULT_ADMIN_ROLE` | Full contract governance |
-| `MINTER_ROLE` | Direct privileged minting (admin only) |
-| `AI_OPERATOR_ROLE` | Submit `requestUsefulness`, subject to daily quota |
-| `PAUSER_ROLE` | Emergency pause / unpause |
-| `RESERVE_ROLE` | Manage the protocol fee reserve address |
-| `DEV_ADMIN_ROLE` | Developer override for testing and migration |
+| `DEFAULT_ADMIN_ROLE` | Full contract governance, can reassign `RESERVE_ROLE` |
+| `DEV_ADMIN_ROLE` | Trigger `requestUsefulness`, update `dailyMintLimit` / `agentDailyCap` |
+| `RESERVE_ROLE` | Held by the protocol fee reserve address |
+
+`registerAgent` and `submitProof` are intentionally **permissionless** — no role is required, so any wallet (including third-party agents) can call them directly. See [Connect Your Own Agent](#connect-your-own-agent).
 
 ### Daily Quota
 
-Each address holding `AI_OPERATOR_ROLE` is limited to a configurable daily mint cap, enforced on-chain using the UTC day epoch:
+Every AI-driven mint (`submitProof` and `birthToken`) shares a global daily limit and a per-agent cap, enforced on-chain using the UTC day epoch:
 
 ```solidity
-uint256 epoch = block.timestamp / 1 days;
-require(dailyMinted[operator][epoch] + amount <= aiDailyCap, "Quota exceeded");
+uint256 day = block.timestamp / 1 days;
+require(mintedInDay[day] + amount <= dailyMintLimit, "Daily mint limit exceeded");
+require(agentMintedInDay[agent][day] + amount <= agentDailyCap, "Agent daily cap exceeded");
 ```
 
-This prevents runaway minting while still allowing high-throughput AI pipelines across multiple operators.
+This prevents runaway minting while still allowing high-throughput AI pipelines across many independent agents. Both limits are admin-adjustable (`setDailyMintLimit`, `setAgentDailyCap`) and a hard `MAX_SUPPLY` ceiling backstops every path regardless of quota.
 
 ---
 
@@ -248,7 +252,7 @@ MetaCoreX/
 
 ### `ARZYG_ERC20_AI.sol` (v2.1)
 
-**Inherits:** `ERC20`, `ERC20Permit`, `AccessControl`, `Pausable`
+**Inherits:** `ERC20`, `AccessControl`
 
 **Constructor:**
 
@@ -264,53 +268,49 @@ constructor(
 
 **Key Functions:**
 
-| Function | Role Required | Description |
+| Function | Access | Description |
 |---|---|---|
-| `requestUsefulness(agent, proof, amount)` | `AI_OPERATOR_ROLE` | Submit PoU request to Chainlink |
-| `handleOracleFulfillment(requestId, response, err)` | Internal (router callback) | Process oracle result, call `birthToken` |
-| `birthToken(agent, amount)` | Internal | Split mint: 99% → agent, 1% → reserve |
-| `aiTransfer(from, to, amount)` | `AI_OPERATOR_ROLE` | Execute transfer on behalf of user |
-| `mint(to, amount)` | `MINTER_ROLE` | Direct privileged mint |
-| `burn(amount)` | Token holder | Burn own tokens |
-| `setAiDailyCap(cap)` | `DEFAULT_ADMIN_ROLE` | Update daily mint quota |
-| `setReserve(newReserve)` | `RESERVE_ROLE` | Update fee reserve address |
-| `pause() / unpause()` | `PAUSER_ROLE` | Emergency circuit breaker |
+| `registerAgent(name, description)` | Permissionless | One-time on-chain agent registration |
+| `submitProof(proof, amount, score)` | Registered agent | Self-reported PoU mint: `amount * score / 10`, subject to daily quota |
+| `requestUsefulness(agent, proof, amount)` | `DEV_ADMIN_ROLE` | Submit a PoU request to Chainlink Functions |
+| `handleOracleFulfillment(requestId, response, err)` | Router callback only | Processes the oracle result, calls `birthToken` |
+| `birthToken(agent, amount, proof)` | Internal | Split mint: 99% → agent, 1% → reserve |
+| `getAgentInfo(address)` | View, public | Returns an agent's name/description/stats |
+| `setDailyMintLimit(limit)` / `setAgentDailyCap(cap)` | `DEV_ADMIN_ROLE` | Update the global / per-agent daily mint quota |
+| `changeReserve(newReserve)` | `DEFAULT_ADMIN_ROLE` | Update the protocol fee reserve address |
 
 **Events:**
 
 | Event | Emitted When |
 |---|---|
+| `AgentRegistered(agent, name, description, registeredAt)` | New agent registers |
+| `ProofAccepted(agent, proof, amount, score, reward)` | `submitProof` succeeds |
+| `ProofRejected(agent, proof, reason)` | `submitProof` called with score `0` |
 | `MintRequested(requestId, to, amount, proof)` | Chainlink request submitted |
 | `TokenBirthed(agent, totalAmount, rewardAmount, feeAmount)` | Oracle approved, tokens minted |
-| `AIMinted(to, amount, proof)` | Agent share successfully minted |
-| `ProofRejected(requestId, reason)` | Oracle returned score < 1 |
+| `AIMinted(to, amount, proof)` | Agent share successfully minted (oracle path) |
+| `OracleProofRejected(requestId, reason)` | Oracle returned score `< 1` |
 | `ReserveChanged(oldReserve, newReserve)` | Reserve address updated |
+| `DailyMintLimitChanged` / `AgentDailyCapChanged` | Admin updated a daily quota |
 
 ---
 
 ## API Reference
 
-Base URL: `/api`
+Base URL: `/api`. The full, up-to-date reference — including the agent registry, agent task marketplace, and PoU analytics endpoints added since this table was first written — lives in **[`docs/api.md`](docs/api.md)**. Quick summary:
 
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/healthz` | Server health check |
 | `GET` | `/api/contract/info` | Live on-chain token info (supply, balance, block) |
 | `GET` | `/api/contract/status` | Blockchain connection status |
-| `POST` | `/api/contract/mint-demo` | Trigger full on-chain mint cycle (request → fulfill) |
-| `POST` | `/api/events/emit` | Manually emit an event to the EventBus |
-| `GET` | `/api/events/demo` | Fire a 3-event demo sequence |
+| `GET` | `/api/agents/list/all` / `/api/agents/:address` | On-chain agent registry |
+| `GET`/`POST` | `/api/agent-tasks/*` | Agent task marketplace (list, create, assign, complete, verify) |
+| `GET` | `/api/pou/*` | Proof-of-Usefulness analytics (overview, trend, leaderboard, agent profiles) |
+| `POST` | `/api/events/emit`, `GET /api/events/demo` | Dev/test-only EventBus helpers (disabled in production) |
 | `WS` | `/api/ws` | Real-time WebSocket event stream |
 
-### WebSocket Event Types
-
-```json
-{ "type": "MintRequested",     "data": { "requestId": "0x...", "to": "0x...", "amount": "...", "proof": "..." } }
-{ "type": "TokenBirthed",      "data": { "agent": "0x...", "totalAmount": "...", "rewardAmount": "...", "feeAmount": "..." } }
-{ "type": "ProofRejected",     "data": { "requestId": "0x...", "reason": "..." } }
-{ "type": "AgentStatusChanged","data": { "status": "active | idle | offline" } }
-{ "type": "SystemMessage",     "data": { "message": "..." } }
-```
+See [`docs/api.md`](docs/api.md) for full request/response shapes and WebSocket event types.
 
 ---
 
@@ -362,7 +362,9 @@ pnpm --filter @workspace/contracts run test
 | Variable | Required | Description |
 |---|---|---|
 | `PORT` | Yes | API server port (default: 8080 via workflow) |
-| `DATABASE_URL` | Optional | PostgreSQL connection string (for DB features) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string — the server throws at startup without it |
+| `SEPOLIA_RPC_URL` / `ETH_RPC_URL` | Recommended | Overrides the RPC URL in `contracts/deployed.json` at runtime |
+| `DEPLOYER_PRIVATE_KEY` | Optional | Needed only for server-signed admin transactions (e.g. `/api/contract/mint-demo`) |
 | `GITHUB_TOKEN` | Deploy only | GitHub PAT for pushing to the repository |
 
 ---
@@ -394,6 +396,39 @@ The **Visual Core** is a real-time cyberpunk OS interface that bridges the block
 2. `MockFunctionsRouter.fulfillSuccess` → oracle callback
 3. `birthToken` splits reward: 99% to agent, 1% to reserve
 4. Dashboard updates balance and total supply in real time
+
+### Screenshot
+
+![Visual Core Dashboard](docs/screenshots/visual-core-dashboard.jpg)
+
+---
+
+## Connect Your Own Agent
+
+You can point your own AI agent at MetaCoreX **without ever sharing a private key with us**. `registerAgent` and `submitProof` on `ARZYG_ERC20_AI.sol` are permissionless — any wallet can call them directly on-chain.
+
+1. Fork this repository. (The GitHub Actions template runs `scripts/src/github-agent.ts` inside the full pnpm workspace — copying just that file into an unrelated repo won't work standalone.)
+2. Add two GitHub Actions secrets in your fork — `AGENT_PRIVATE_KEY` (your agent wallet) and `SEPOLIA_RPC_URL` (any Sepolia RPC endpoint) — plus an `API_BASE_URL` repo variable pointing at the published MetaCoreX API.
+3. Fund that wallet with a little Sepolia ETH for gas from a public faucet.
+4. Enable Actions — `.github/workflows/agent.yml` registers your agent and submits proof-of-work on a schedule, signing directly with your own key.
+
+Prefer to run it yourself, in Node or Python, outside GitHub Actions? Copy-pasteable standalone scripts are in [`examples/`](examples/): [`agent-example.js`](examples/agent-example.js) (ethers.js) and [`agent_example.py`](examples/agent_example.py) (web3.py).
+
+Full details, including the on-chain safety caps your agent needs to know about, are in **[`docs/agent.md`](docs/agent.md)**. The two API routes that accept a raw private key (`/api/agents/register`, `/api/agents/submit-proof`) are internal-only, gated by a token in a gitignored local file (never an env var, so forks never inherit it), and reserved for this project's own automation — third-party agents should not use them.
+
+---
+
+## Deployment
+
+The API server (which also serves this dashboard) ships as a self-contained Docker image and deploys to [Fly.io](https://fly.io) with the committed `Dockerfile` + `fly.toml`:
+
+```bash
+fly launch --no-deploy   # first time only, keeps the committed fly.toml
+fly secrets set DATABASE_URL="postgres://..." SEPOLIA_RPC_URL="https://..."
+fly deploy
+```
+
+Full step-by-step instructions, required secrets, and how to verify a deploy are in **[`docs/deploy.md`](docs/deploy.md)**.
 
 ---
 

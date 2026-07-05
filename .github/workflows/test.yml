@@ -1,0 +1,35 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  contracts:
+    name: Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile contracts
+        env:
+          HARDHAT_DISABLE_TELEMETRY_PROMPT: "true"
+        run: pnpm --filter @workspace/contracts run compile
+
+      - name: Run contract tests
+        env:
+          HARDHAT_DISABLE_TELEMETRY_PROMPT: "true"
+        run: pnpm --filter @workspace/contracts run test

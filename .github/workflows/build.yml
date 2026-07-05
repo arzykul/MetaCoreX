@@ -1,0 +1,32 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  typecheck:
+    name: Typecheck & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (libs + api-server + scripts)
+        # Scoped to the MetaCoreX product surface (libs, API server, scripts).
+        # The workspace also contains unrelated artifacts (diabeto, personal-agent,
+        # metacorex-site, mockup-sandbox) with their own pre-existing, unrelated
+        # typecheck issues tracked separately — this badge reflects MetaCoreX only.
+        run: pnpm run typecheck:libs && pnpm --filter @workspace/api-server --filter @workspace/scripts --if-present run typecheck

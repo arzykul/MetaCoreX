@@ -93,6 +93,22 @@ Previously `submitProof(proof, amount, score)` had **no per-call cap, no daily q
 
 **How to apply:** Keep the `index.ts` top-level handlers (log via `logger`, don't exit) in place; if the server ever needs to hard-exit on a truly fatal error, do it explicitly rather than relying on an unhandled rejection to crash it.
 
+## Agent struct field order for hand-written ABIs
+
+The public `agents(address)` getter and `getAgentInfo(address)` both return the `Agent` struct in this exact order: `(string name, string description, uint256 registeredAt, uint256 totalEarned, uint256 tasksCompleted, bool isActive)`. Any inline/hand-written ABI (ethers.js human-readable string, web3.py JSON ABI) for this getter must match this order exactly.
+
+**Why:** A prior version of the standalone example agents (`examples/agent-example.js`, `examples/agent_example.py`) hand-wrote a 5-field ABI in the wrong order with a nonexistent `totalMinted` field. In ethers v6 this silently misdecoded `isActive` as `true` for every wallet (skipping registration, then reverting on `submitProof`); in web3.py's strict decoder it raised an exception on the very first call. Caught only by an architect review that cross-checked the ABI against the actual `.sol` source — not by syntax checks or the happy-path e2e test.
+
+**How to apply:** Never hand-derive a struct-returning ABI from memory or from another doc — copy it from a known-correct source (`scripts/src/github-agent.ts`'s inline `AGENT_ABI`, or the contract source directly) and verify field order against `ARZYG_ERC20_AI.sol`'s `struct Agent` before trusting any script that decodes it.
+
+## README/replit.md drift from actual contract source
+
+The root `README.md` and `replit.md` had accumulated stale claims from an earlier contract version — `ERC20Permit`, `Pausable`, `MINTER_ROLE`/`AI_OPERATOR_ROLE`/`PAUSER_ROLE`, and functions like `aiMint`/`aiTransfer`/`mint`/`burn`/`pause`/`setAiDailyCap` — none of which exist in the deployed `ARZYG_ERC20_AI.sol` (actual: `ERC20` + `AccessControl` only, roles are `DEFAULT_ADMIN_ROLE`/`DEV_ADMIN_ROLE`/`RESERVE_ROLE`).
+
+**Why:** Docs describing on-chain contracts drift the moment the contract is redeployed with a different interface, and nothing catches it automatically (no compile-time link between markdown prose and Solidity).
+
+**How to apply:** When editing README/docs that describe contract internals (roles, functions, events, inheritance), verify every claim against the current `.sol` source directly — don't trust or copy-forward wording from an earlier doc revision.
+
 ## Pending Work
 
 1. **Chainlink Subscription** — user has LINK + ETH on deployer wallet; needs to create subscription at functions.chain.link/sepolia, fund it, add the contract as consumer, then add `CHAINLINK_SUBSCRIPTION_ID` to Replit Secrets. Programmatic creation is blocked by Chainlink ToS (must use web UI first). Note: this must be redone against the new (2026-07-05) contract address — a subscription tied to the old address won't authorize the new one as a consumer.

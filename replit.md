@@ -33,24 +33,25 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 - `contracts/typechain-types/` — generated TypeScript bindings (gitignored)
 - `artifacts/api-server/src/` — Express API server source
 - `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts)
+- `Dockerfile`, `fly.toml` — Fly.io deployment (multi-stage build, only `@workspace/api-server` runs in prod)
+- `docs/api.md`, `docs/agent.md`, `docs/deploy.md` — API reference, third-party agent connection guide, deployment guide
+- `examples/agent-example.js`, `examples/agent_example.py` — standalone (non-workspace) example agents
 
 ## Architecture decisions
 
 - OZ v5 requires `evmVersion: "cancun"` — the `mcopy` opcode used in `Bytes.sol` is Cancun-only; using `paris` causes compile errors.
 - ARZY-G uses individual Hardhat plugins (not `hardhat-toolbox`) to avoid the Ignition peer-dep chain.
-- Role-based access with `AccessControl` — MINTER_ROLE, AI_OPERATOR_ROLE, and PAUSER_ROLE are all granted to the admin at deploy time and can be delegated later.
-- AI daily mint quota is enforced on-chain using a UTC day epoch (`block.timestamp / 1 days`).
-- ERC-2612 Permit is included so AI agents can execute gasless approvals via off-chain signatures.
+- Role-based access with `AccessControl` — only `DEFAULT_ADMIN_ROLE`, `DEV_ADMIN_ROLE`, and `RESERVE_ROLE` exist; `registerAgent`/`submitProof` are deliberately permissionless (no role) so third-party agents never need to be granted anything.
+- AI daily mint quota is enforced on-chain using a UTC day epoch (`block.timestamp / 1 days`), shared globally (`dailyMintLimit`) and per-agent (`agentDailyCap`) across both mint paths (`submitProof` and `birthToken`).
+- No ERC-2612 Permit and no `Pausable` — the contract is intentionally minimal (`ERC20` + `AccessControl` only); don't assume these exist when writing docs or examples.
 
 ## Product
 
-MetaCoreX ARZY-G is an ERC-20 token with an AI integration layer:
-- Standard token operations (transfer, approve, burn)
-- Gasless approvals via EIP-2612 Permit — ideal for AI agent pipelines
-- `aiMint`: AI operators can mint within a configurable daily cap
-- `aiTransfer`: AI agents can execute transfers on behalf of users (with approval)
-- Emergency pause/unpause for circuit-breaker safety
-- `submitProof`: permissionless proof-of-work mint (`reward = amount * score / 10`, self-reported by the caller), bounded by a hard `MAX_SUPPLY` (1,000,000,000 ARZY-G, enforced in `_update`), an admin-configurable global `dailyMintLimit` (default 10,000/day), an admin-configurable per-agent `agentDailyCap` (default 1,000/day), and a `score <= 10` sanity check. `birthToken` (the oracle-fulfillment mint path) shares the same daily-quota enforcement.
+MetaCoreX ARZY-G (`ERC20` + `AccessControl`, no Permit/Pausable) is an ERC-20 token with an AI integration layer:
+- Standard token operations (transfer, approve) — no on-chain `burn`, `mint`, `aiMint`, `aiTransfer`, or pause/unpause; those don't exist in the deployed contract despite older docs implying otherwise
+- Roles: `DEFAULT_ADMIN_ROLE` (governance, reassigns `RESERVE_ROLE`), `DEV_ADMIN_ROLE` (triggers `requestUsefulness`, sets daily quotas), `RESERVE_ROLE` (fee reserve address) — there is no `MINTER_ROLE`, `AI_OPERATOR_ROLE`, or `PAUSER_ROLE`
+- `registerAgent` / `submitProof`: fully permissionless proof-of-work mint (`reward = amount * score / 10`, self-reported by the caller), bounded by a hard `MAX_SUPPLY` (1,000,000,000 ARZY-G, enforced in `_update`), an admin-configurable global `dailyMintLimit` (default 10,000/day), an admin-configurable per-agent `agentDailyCap` (default 1,000/day), and a `score <= 10` sanity check
+- `requestUsefulness` → `handleOracleFulfillment` → `birthToken`: oracle-verified path (`DEV_ADMIN_ROLE` triggers the request; only the Chainlink Functions router can fulfill it) that mints the full pre-agreed amount split 99% agent / 1% reserve when score ≥ 1, sharing the same daily-quota enforcement as `submitProof`
 
 ## Connecting your own agent via GitHub
 

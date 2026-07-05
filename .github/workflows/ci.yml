@@ -1,0 +1,56 @@
+# Combined convenience workflow — runs both the Build and Tests jobs together
+# on demand. The badges in README.md link to the dedicated `build.yml` and
+# `test.yml` workflows instead (so each badge reflects only its own job),
+# which already run automatically on every push/PR to main; this one is for
+# manually running both in a single click.
+name: CI (manual, build + tests)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Typecheck & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (libs + api-server + scripts)
+        # Scoped the same way as build.yml — see the comment there for why.
+        run: pnpm run typecheck:libs && pnpm --filter @workspace/api-server --filter @workspace/scripts --if-present run typecheck
+
+  test:
+    name: Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile contracts
+        env:
+          HARDHAT_DISABLE_TELEMETRY_PROMPT: "true"
+        run: pnpm --filter @workspace/contracts run compile
+
+      - name: Run contract tests
+        env:
+          HARDHAT_DISABLE_TELEMETRY_PROMPT: "true"
+        run: pnpm --filter @workspace/contracts run test

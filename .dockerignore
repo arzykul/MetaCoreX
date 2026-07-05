@@ -1,0 +1,40 @@
+# Version control / editor / Replit-specific
+.git
+.gitignore
+.replit
+.replitignore
+.config
+.cache
+.local
+.vscode
+.idea
+
+# Dependencies (installed fresh in the builder stage)
+node_modules
+**/node_modules
+
+# Build output (rebuilt in the builder stage)
+**/dist
+**/.tsbuildinfo
+**/tmp
+**/out-tsc
+
+# Contract build artifacts we don't need to rebuild inside the image
+# (contracts/deployed.json + contracts/artifacts/**/*.json ARE needed at
+# runtime by the API server and must NOT be excluded here)
+contracts/cache
+contracts/typechain-types
+
+# Mobile / Expo (not part of the api-server image)
+**/.expo
+**/.expo-shared
+
+# Docs / design assets not needed to build or run the api-server
+docs/screenshots
+attached_assets
+.agents
+
+# Misc
+*.log
+coverage
+.DS_Store
