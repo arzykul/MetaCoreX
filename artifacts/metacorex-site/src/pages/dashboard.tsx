@@ -3,7 +3,6 @@ import { useSearch } from "wouter";
 import { Navbar } from "@/components/layout/navbar";
 import {
   useAccount,
-  useConnect,
   useDisconnect,
   useBalance,
   useWriteContract,
@@ -22,29 +21,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { decodeEventLog, formatEther, type Address } from "viem";
 import { ARZYG_AGENT_ABI } from "@/lib/contract-abi";
-
-function ConnectWalletPrompt({ label }: { label: string }) {
-  const { connectors, connect } = useConnect();
-  return (
-    <div className="text-center py-12 border border-dashed border-border rounded-lg bg-background">
-      <Wallet className="w-12 h-12 text-primary mx-auto mb-4 opacity-70" />
-      <h3 className="text-lg font-semibold text-foreground mb-1">Connect your wallet</h3>
-      <p className="text-sm text-muted-foreground mb-4">{label}</p>
-      <div className="flex flex-wrap gap-2 justify-center">
-        {connectors.map((connector) => (
-          <Button
-            key={connector.uid}
-            variant="outline"
-            onClick={() => connect({ connector })}
-            data-testid={`btn-connect-inline-${connector.id}`}
-          >
-            Connect {connector.name}
-          </Button>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { ConnectWalletPrompt, ConnectWalletButtons } from "@/components/wallet/connect-wallet-prompt";
 
 const DASHBOARD_TABS = ["agents", "register", "proof", "analytics"] as const;
 type DashboardTab = (typeof DASHBOARD_TABS)[number];
@@ -56,7 +33,6 @@ function tabFromSearch(search: string): DashboardTab {
 
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
-  const { connectors, connect } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: balance } = useBalance({ address });
   const queryClient = useQueryClient();
@@ -185,17 +161,7 @@ export default function Dashboard() {
                 </Button>
               </div>
             ) : (
-              <div className="flex gap-2">
-                {connectors.map((connector) => (
-                  <Button
-                    key={connector.uid}
-                    onClick={() => connect({ connector })}
-                    data-testid={`btn-connect-${connector.id}`}
-                  >
-                    Connect {connector.name}
-                  </Button>
-                ))}
-              </div>
+              <ConnectWalletButtons />
             )}
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
-import { useAccount, useConnect, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { decodeEventLog, formatEther, parseEther, type Address } from "viem";
 import {
@@ -55,8 +55,8 @@ import {
   Loader2,
   PlusCircle,
   User,
-  Wallet,
 } from "lucide-react";
+import { ConnectWalletPrompt } from "@/components/wallet/connect-wallet-prompt";
 
 const PAGE_SIZE = 6;
 
@@ -74,29 +74,6 @@ function StatusBadge({ status }: { status: TaskStatus }) {
     <Badge variant="outline" className={meta.className} data-testid={`badge-status-${status}`}>
       {meta.label}
     </Badge>
-  );
-}
-
-function ConnectWalletPrompt({ label }: { label: string }) {
-  const { connectors, connect } = useConnect();
-  return (
-    <div className="text-center py-12 border border-dashed border-border rounded-lg bg-background">
-      <Wallet className="w-12 h-12 text-primary mx-auto mb-4 opacity-70" />
-      <h3 className="text-lg font-semibold text-foreground mb-1">Connect Wallet</h3>
-      <p className="text-sm text-muted-foreground mb-4">{label}</p>
-      <div className="flex flex-wrap gap-2 justify-center">
-        {connectors.map((connector) => (
-          <Button
-            key={connector.uid}
-            variant="outline"
-            onClick={() => connect({ connector })}
-            data-testid={`btn-connect-inline-${connector.id}`}
-          >
-            Connect {connector.name}
-          </Button>
-        ))}
-      </div>
-    </div>
   );
 }
 
