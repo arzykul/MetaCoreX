@@ -224,3 +224,79 @@ export async function verifyTask(id: string, verified: boolean): Promise<AgentTa
   });
   return data.task;
 }
+
+// ─── PoU Analytics (Proof of Usefulness) ───────────────────────────────────
+// Mounted at /api/pou/* — backed by the background proofIndexer, which
+// mirrors on-chain ProofAccepted events into the agent_proofs table. This is
+// the full network history of accepted proofs, not just marketplace tasks.
+
+export type PouRange = "24h" | "7d" | "30d" | "90d" | "all";
+export type PouBucket = "hour" | "day";
+
+export interface PouOverview {
+  range: PouRange;
+  networkPoU: number;
+  totalUsefulWork: number;
+  activeAgents24h: number;
+  pouVelocityPct: number | null;
+}
+
+export interface PouTrendPoint {
+  t: string;
+  avgScore: number;
+  proofCount: number;
+  movingAvg: number;
+}
+
+export interface PouTrend {
+  range: PouRange;
+  bucket: PouBucket;
+  points: PouTrendPoint[];
+}
+
+export interface PouDistributionBucket {
+  range: string;
+  agentCount: number;
+}
+
+export interface PouHeatmapCell {
+  dow: number;
+  hour: number;
+  proofCount: number;
+  avgScore: number;
+}
+
+export interface PouFeedEvent {
+  id: number;
+  agentAddress: string;
+  proof: string;
+  score: number;
+  rewardArzyg: string;
+  txHash: string;
+  blockTimestamp: string;
+}
+
+/** GET /api/pou/overview?range=... — hero metrics. */
+export function getPouOverview(range: PouRange = "7d"): Promise<PouOverview> {
+  return apiFetch<PouOverview>(`/api/pou/overview?range=${range}`);
+}
+
+/** GET /api/pou/trend?range=&interval= — bucketed avg PoU score over time. */
+export function getPouTrend(range: PouRange = "7d", interval: PouBucket = "day"): Promise<PouTrend> {
+  return apiFetch<PouTrend>(`/api/pou/trend?range=${range}&interval=${interval}`);
+}
+
+/** GET /api/pou/distribution — agents histogrammed by lifetime avg score. */
+export function getPouDistribution(): Promise<{ buckets: PouDistributionBucket[] }> {
+  return apiFetch<{ ok: boolean; buckets: PouDistributionBucket[] }>("/api/pou/distribution");
+}
+
+/** GET /api/pou/heatmap — day-of-week x hour-of-day activity grid (UTC). */
+export function getPouHeatmap(): Promise<{ cells: PouHeatmapCell[] }> {
+  return apiFetch<{ ok: boolean; cells: PouHeatmapCell[] }>("/api/pou/heatmap");
+}
+
+/** GET /api/pou/feed?limit= — most recent accepted proofs, network-wide. */
+export function getPouFeed(limit = 50): Promise<{ events: PouFeedEvent[] }> {
+  return apiFetch<{ ok: boolean; events: PouFeedEvent[] }>(`/api/pou/feed?limit=${limit}`);
+}

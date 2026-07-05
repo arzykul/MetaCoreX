@@ -212,7 +212,7 @@ export default function Dashboard() {
               <Activity className="w-4 h-4 mr-2" /> Submit Proof
             </TabsTrigger>
             <TabsTrigger value="analytics" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-medium" data-testid="tab-analytics">
-              <BarChart3 className="w-4 h-4 mr-2" /> PoU Analytics
+              <BarChart3 className="w-4 h-4 mr-2" /> Earnings
             </TabsTrigger>
           </TabsList>
 

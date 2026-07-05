@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import {
+  Activity,
   BarChart3,
   BookOpen,
   ClipboardList,
@@ -22,7 +23,8 @@ const navLinks = [
   { label: "Agents", href: "/dashboard?tab=agents", icon: Users },
   { label: "Submit Proof", href: "/dashboard?tab=proof", icon: FileCheck },
   { label: "Tasks", href: "/tasks", icon: ClipboardList },
-  { label: "Analytics", href: "/dashboard?tab=analytics", icon: BarChart3 },
+  { label: "PoU Analytics", href: "/pou", icon: Activity },
+  { label: "Earnings", href: "/dashboard?tab=analytics", icon: BarChart3 },
   { label: "FAQ", href: "/faq", icon: HelpCircle },
   { label: "Blog", href: "/blog", icon: Newspaper },
   { label: "Docs", href: "/docs", icon: BookOpen },

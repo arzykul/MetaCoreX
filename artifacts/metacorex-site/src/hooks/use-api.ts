@@ -11,7 +11,14 @@ import {
   assignTask,
   completeTask,
   verifyTask,
+  getPouOverview,
+  getPouTrend,
+  getPouDistribution,
+  getPouHeatmap,
+  getPouFeed,
   type ListTasksParams,
+  type PouRange,
+  type PouBucket,
 } from "@/lib/api";
 
 export const queryKeys = {
@@ -130,5 +137,47 @@ export function useVerifyTask() {
   return useMutation({
     mutationFn: ({ id, verified }: { id: string; verified: boolean }) => verifyTask(id, verified),
     onSuccess: invalidate,
+  });
+}
+
+// ─── PoU Analytics ──────────────────────────────────────────────────────────
+
+export function usePouOverview(range: PouRange) {
+  return useQuery({
+    queryKey: ["pouOverview", range],
+    queryFn: () => getPouOverview(range),
+    refetchInterval: 15000,
+  });
+}
+
+export function usePouTrend(range: PouRange, interval: PouBucket) {
+  return useQuery({
+    queryKey: ["pouTrend", range, interval],
+    queryFn: () => getPouTrend(range, interval),
+    refetchInterval: 30000,
+  });
+}
+
+export function usePouDistribution() {
+  return useQuery({
+    queryKey: ["pouDistribution"],
+    queryFn: getPouDistribution,
+    refetchInterval: 60000,
+  });
+}
+
+export function usePouHeatmap() {
+  return useQuery({
+    queryKey: ["pouHeatmap"],
+    queryFn: getPouHeatmap,
+    refetchInterval: 60000,
+  });
+}
+
+export function usePouFeed(limit = 50) {
+  return useQuery({
+    queryKey: ["pouFeed", limit],
+    queryFn: () => getPouFeed(limit),
+    refetchInterval: 15000,
   });
 }
