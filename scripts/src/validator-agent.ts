@@ -54,14 +54,18 @@ short-term volatility, and flagged a possible breakout above $3,800 with
 supporting on-chain volume evidence. Delivered as a 1-page markdown report
 with a chart reference and three actionable recommendations.`;
 
+// System instruction: turns the validator into a fact-checking "AI judge"
+// that uses Google Search grounding to verify concrete claims (deployed a
+// node, wrote an article, made a post, etc.) before awarding a high score.
+const SYSTEM_INSTRUCTION = `Ты — строгий ИИ-Судья для MetaCoreX. Твоя задача — проверить отчет исполнителя. Если исполнитель утверждает, что развернул ноду, написал статью или сделал пост, используй инструмент Google Search, чтобы найти подтверждение в интернете. Выставляй высокий PoU Score (>=7) только если нашел реальные доказательства в сети. Если информации нет или это спам — ставь балл ниже 7.`;
+
 interface PouScoreResult {
   score: number;
   reasoning: string;
 }
 
 function buildPrompt(payload: string): string {
-  return `You are a strict PoU (Proof-of-Usefulness) quality evaluator for the MetaCoreX network.
-Score the following executor report on a "PoU Score" from 1 (useless/low-effort) to 10 (exceptional, high-impact work).
+  return `Score the following executor report on a "PoU Score" from 1 (useless/low-effort/unverifiable) to 10 (exceptional, high-impact, verified work).
 
 Executor report:
 """
@@ -69,21 +73,39 @@ ${payload}
 """
 
 Respond with ONLY a compact JSON object, no markdown fences, in this exact shape:
-{"score": <integer 1-10>, "reasoning": "<one short sentence explaining the score>"}`;
+{"score": <integer 1-10>, "reasoning": "<one short sentence explaining the score, mentioning what search evidence, if any, was found>"}`;
+}
+
+function extractJson(text: string): unknown {
+  const fenced = text.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
+  try {
+    return JSON.parse(fenced);
+  } catch {
+    // Search-grounded responses sometimes wrap the JSON in extra prose —
+    // fall back to grabbing the first {...} block in the text.
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+    throw new Error(`Could not parse model response as JSON: ${text}`);
+  }
 }
 
 async function scorePayload(ai: GoogleGenAI, payload: string): Promise<PouScoreResult> {
   const response = await ai.models.generateContent({
     model: MODEL,
     contents: buildPrompt(payload),
+    config: {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      tools: [{ googleSearch: {} }],
+    },
   });
 
   const text = (response.text ?? "").trim();
-  const jsonText = text.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(jsonText);
+    parsed = extractJson(text);
   } catch {
     throw new Error(`Could not parse model response as JSON: ${text}`);
   }

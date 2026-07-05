@@ -117,6 +117,14 @@ The root `README.md` and `replit.md` had accumulated stale claims from an earlie
 
 **How to apply:** When editing README/docs that describe contract internals (roles, functions, events, inheritance), verify every claim against the current `.sol` source directly — don't trust or copy-forward wording from an earlier doc revision.
 
+## Gemini `googleSearch` grounding breaks strict-JSON scoring prompts unless you add a fallback parser
+
+`scripts/src/validator-agent.ts`'s PoU scorer adds `tools: [{ googleSearch: {} }]` + a `systemInstruction` (via `config: {...}` on `ai.models.generateContent`) so the AI judge fact-checks claims (deployed a node, wrote an article, etc.) before minting. Even with an explicit "respond with ONLY compact JSON" instruction, grounded responses can wrap the JSON in extra prose/citations.
+
+**Why:** Search-grounded generation prioritizes citing evidence over rigid output formatting; a plain `JSON.parse(response.text)` that worked fine ungrounded can start throwing once grounding is enabled.
+
+**How to apply:** Always pair `googleSearch` tool usage with a resilient parse step — try direct JSON.parse first, then fall back to regex-extracting the first `{...}` block from the response text (see `extractJson` in `validator-agent.ts`) — rather than assuming grounded output stays pure JSON.
+
 ## Pending Work
 
 1. **Chainlink Subscription** — user has LINK + ETH on deployer wallet; needs to create subscription at functions.chain.link/sepolia, fund it, add the contract as consumer, then add `CHAINLINK_SUBSCRIPTION_ID` to Replit Secrets. Programmatic creation is blocked by Chainlink ToS (must use web UI first). Note: this must be redone against the new (2026-07-05) contract address — a subscription tied to the old address won't authorize the new one as a consumer.
