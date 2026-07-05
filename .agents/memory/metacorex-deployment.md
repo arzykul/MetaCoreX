@@ -5,11 +5,11 @@ description: Live deployment addresses, secrets, and project status for MetaCore
 
 ## Sepolia Deployment (LIVE)
 
-- **ARZYG_ERC20_AI**: `0xdd378e369640Be59E7DE4D1BAeF6Ec7F0bC14E94`
+- **ARZYG_ERC20_AI**: `0xC3f4231F619F8D22666d70aeaA5D43EA56498770` (v2.2, redeployed 2026-07-05 — supersedes the old `0xdd378e...` address, which has no supply caps and should be treated as retired/unsafe)
 - **Deployer/Owner**: `0x8b7C9bB9794e849a64242CEd0B7fe4604cB4A0D6`
 - **Network**: Ethereum Sepolia (chainId: 11155111)
-- **Deployment Block**: `11202366` (anchor for agent-registry log scans — see `rpc-log-scan-limits.md`)
-- **Etherscan**: https://sepolia.etherscan.io/address/0xdd378e369640Be59E7DE4D1BAeF6Ec7F0bC14E94
+- **Deployment Block**: `11209059` (anchor for agent-registry log scans — see `rpc-log-scan-limits.md`)
+- **Etherscan**: https://sepolia.etherscan.io/address/0xC3f4231F619F8D22666d70aeaA5D43EA56498770
 - **Chainlink Router (Sepolia)**: `0xb83E47C2bC239B3bf370bc41e1459A34b41238D0`
 - **Chainlink DON**: `fun-ethereum-sepolia-1`
 
@@ -17,9 +17,9 @@ description: Live deployment addresses, secrets, and project status for MetaCore
 
 ARZYG_ERC20_AI is deployed as a plain (non-upgradeable) contract. Any change to `.sol` requires a full redeploy at a **new address** — update `contracts/deployed.json`, this memory file, and restart the API server so `contractService` reconnects to the new address/ABI.
 
-## Agent proof-of-work trust gap
+## Agent proof-of-work trust gap (mitigated 2026-07-05, not fully closed)
 
-`submitProof` mints `amount * score / 10` directly to the caller with **no verification of amount/score** — any registered agent can mint arbitrary amounts by self-reporting a high score. Implemented exactly as requested by the user but flagged as a known trust/security gap; needs an authorization/oracle check before mainnet.
+`submitProof` still mints `amount * score / 10` directly to the caller based on a **self-reported** amount/score — there's no oracle/authorization check on whether the claimed work actually happened. As of 2026-07-05 this is bounded (not unlimited) by `MAX_SUPPLY`, a global `dailyMintLimit`, a per-agent `agentDailyCap`, and a `score <= 10` sanity check (see `submitProof supply caps` below), but a malicious agent can still mint up to its daily cap for fabricated work. Full fix needs an authorization/oracle check before mainnet.
 
 ## Secrets in Replit
 
@@ -57,6 +57,10 @@ External agents connect without ever sharing a private key with us: `scripts/src
 
 **How to apply:** Point third-party developers at forking the *whole* repo (the workflow needs the full pnpm workspace to run `scripts/src/github-agent.ts` — copying just 2 files into a foreign repo doesn't work standalone) and setting `AGENT_PRIVATE_KEY`/`SEPOLIA_RPC_URL`/`API_BASE_URL` as their own repo secrets/variables. `API_BASE_URL` must be the real published production URL — verify with `getDeploymentInfo()` once deployed rather than guessing a domain.
 
+### Third-party agents self-heal registration after a contract redeploy
+
+Because `github-agent.ts`'s `ensureRegistered()` fetches the current contract address from `GET /api/contract/info` at runtime (never hardcoded) and calls `registerAgent` again if `isActive` is false, any contract redeploy (new address = fresh registry) requires **no outreach to third-party operators** — their next scheduled GitHub Actions run just re-registers automatically. Our own `scripts/src/auto-agent.ts` has the same self-healing `ensureRegistered()` pattern and was re-run manually once after the 2026-07-05 redeploy to restore its on-chain registration immediately (rather than waiting for its own schedule).
+
 ## verifyProofTx must scope logs to the token contract address
 
 `contractService.verifyProofTx` (used by the `/api/agent-tasks/complete/:id` flow to trust a client-signed on-chain tx) parses every log in the receipt with the token's ABI but must also check `log.address` equals the deployed token contract address before trusting a parsed `ProofAccepted`/`ProofRejected` event.
@@ -65,13 +69,13 @@ External agents connect without ever sharing a private key with us: `scripts/src
 
 **How to apply:** Any code that parses `receipt.logs` for a specific known contract's events must filter by `log.address` first, not just by successfully parsing the ABI. Also enforce txHash uniqueness at the call-site (e.g. one task-completion per txHash) since the contract has no concept of "tasks" and the same accepted proof tx could otherwise be replayed against multiple DB rows.
 
-## submitProof has no supply cap or per-call limit — known open risk
+## submitProof supply caps (fixed 2026-07-05)
 
-Unlike `aiMint` (role-gated, has a daily quota), the ARZY-G contract's permissionless `submitProof(proof, amount, score)` mints `amount * score / 10` to the caller with **no per-call cap, no daily quota, and no total-supply ceiling** anywhere in the contract (confirmed by grep — no `MAX_SUPPLY`/cap logic exists at all, contradicting an earlier docs claim of a "hard 1 billion supply ceiling").
+Previously `submitProof(proof, amount, score)` had **no per-call cap, no daily quota, and no total-supply ceiling** anywhere in the contract — any registered wallet could mint unbounded ARZY-G. Fixed by redeploying with: a hard `MAX_SUPPLY` (1,000,000,000 ARZY-G) enforced in the `_update` override (covers every mint path, not just `submitProof`), an admin-configurable global `dailyMintLimit` (default 10,000/day) and per-agent `agentDailyCap` (default 1,000/day) both enforced via a shared `_enforceDailyQuota` helper called from `submitProof` and `birthToken`, and a `require(score <= 10)` sanity check. Admin (`DEV_ADMIN_ROLE`) can retune the two caps via `setDailyMintLimit`/`setAgentDailyCap`.
 
-**Why:** Publishing the API + advertising a public "bring your own agent" GitHub Actions template turns this from a theoretical flaw into a documented, one-click way for anyone to mint unlimited ARZY-G. Flagged by architect review; the user was asked how to proceed (see conversation) rather than silently shipping a contract fix or silently ignoring it.
+**Why:** Publishing the API + advertising a public "bring your own agent" GitHub Actions template turned this from a theoretical flaw into a documented, one-click way for anyone to mint unlimited ARZY-G. Flagged by architect review; user approved the fix + redeploy.
 
-**How to apply:** Before treating ARZY-G as having any real (non-testnet) value, this needs a contract-level fix — e.g. a `MAX_SUPPLY` check in `_mint`/`submitProof` and a per-agent per-day cap on `submitProof` mirroring `aiMint`'s quota — which requires a redeploy + re-registering agents. Don't assume this is fixed just because `aiMint` has a quota; they are separate code paths.
+**How to apply:** This required a full redeploy (contract has no upgrade proxy — see above) to a new address; existing agent registrations do **not** carry over (see "Third-party agents self-heal" below). This mitigates but doesn't fully close the trust gap — see "Agent proof-of-work trust gap" above.
 
 ## Seed data lives in both code and the already-migrated DB
 
@@ -91,8 +95,8 @@ Unlike `aiMint` (role-gated, has a daily quota), the ARZY-G contract's permissio
 
 ## Pending Work
 
-1. **Chainlink Subscription** — user has LINK + ETH on deployer wallet; needs to create subscription at functions.chain.link/sepolia, fund it, add the contract as consumer, then add `CHAINLINK_SUBSCRIPTION_ID` to Replit Secrets. Programmatic creation is blocked by Chainlink ToS (must use web UI first).
-2. **Etherscan verification** — needs `ETHERSCAN_API_KEY` secret, then run `pnpm --filter @workspace/contracts run verify:sepolia`.
+1. **Chainlink Subscription** — user has LINK + ETH on deployer wallet; needs to create subscription at functions.chain.link/sepolia, fund it, add the contract as consumer, then add `CHAINLINK_SUBSCRIPTION_ID` to Replit Secrets. Programmatic creation is blocked by Chainlink ToS (must use web UI first). Note: this must be redone against the new (2026-07-05) contract address — a subscription tied to the old address won't authorize the new one as a consumer.
+2. **Etherscan verification** — needs `ETHERSCAN_API_KEY` secret, then run `pnpm --filter @workspace/contracts run verify:sepolia` (against the current live address).
 3. **Contract upgrades** — Staking, Governance, and PoU score tiers discussed as future versions.
 
 ## Local Hardhat

@@ -50,8 +50,7 @@ MetaCoreX ARZY-G is an ERC-20 token with an AI integration layer:
 - `aiMint`: AI operators can mint within a configurable daily cap
 - `aiTransfer`: AI agents can execute transfers on behalf of users (with approval)
 - Emergency pause/unpause for circuit-breaker safety
-
-**Known limitation:** `aiMint` (role-gated) enforces a daily quota, but the permissionless `submitProof` mint path (`reward = amount * score / 10`, self-reported by the caller) has no per-call cap, no daily quota, and no total-supply ceiling anywhere in the contract — any registered wallet can mint an unbounded amount of ARZY-G by calling `submitProof` directly. There is currently no hard supply cap on-chain at all. Acceptable for Sepolia testnet demos, but must be fixed (e.g. a `MAX_SUPPLY` check plus a sane per-call/day cap on `submitProof`, mirroring `aiMint`'s quota) before this token has any real/mainnet value.
+- `submitProof`: permissionless proof-of-work mint (`reward = amount * score / 10`, self-reported by the caller), bounded by a hard `MAX_SUPPLY` (1,000,000,000 ARZY-G, enforced in `_update`), an admin-configurable global `dailyMintLimit` (default 10,000/day), an admin-configurable per-agent `agentDailyCap` (default 1,000/day), and a `score <= 10` sanity check. `birthToken` (the oracle-fulfillment mint path) shares the same daily-quota enforcement.
 
 ## Connecting your own agent via GitHub
 

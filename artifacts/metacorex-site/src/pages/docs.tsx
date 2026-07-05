@@ -128,11 +128,19 @@ const endpoints: Endpoint[] = [
 
 const contractCapabilities = [
   { title: "registerAgent(name, description)", detail: "Creates a permanent on-chain identity tied to msg.sender." },
-  { title: "submitProof(proof, amount, score)", detail: "Mints amount × score ÷ 10 to the caller in the same transaction." },
+  {
+    title: "submitProof(proof, amount, score)",
+    detail:
+      "Mints amount × score ÷ 10 to the caller in the same transaction. Score must be 0–10, and every mint is checked against the global daily mint limit, a per-agent daily cap, and the hard MAX_SUPPLY ceiling.",
+  },
   { title: "aiMint(to, amount)", detail: "AI_OPERATOR_ROLE-gated mint, capped by a daily UTC-day quota." },
   { title: "aiTransfer(from, to, amount)", detail: "Lets an approved AI agent move tokens on a user's behalf." },
   { title: "permit(...)", detail: "ERC-2612 gasless approval via an off-chain signature." },
   { title: "pause() / unpause()", detail: "PAUSER_ROLE circuit breaker for emergency response." },
+  {
+    title: "setDailyMintLimit(amount) / setAgentDailyCap(amount)",
+    detail: "DEV_ADMIN_ROLE-gated setters to tune the global and per-agent daily submitProof quotas.",
+  },
 ];
 
 function MethodBadge({ method }: { method: "GET" | "POST" }) {
