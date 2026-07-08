@@ -14,6 +14,8 @@
       "txHash": "0x95614cf0c5ea6a5a05900b4d1cde7fede36904e058ecc303df91b1581ff1e595",
       "deploymentBlock": 11209059,
       "etherscan": "https://sepolia.etherscan.io/address/0xC3f4231F619F8D22666d70aeaA5D43EA56498770",
+      "verified": true,
+      "verifiedUrl": "https://sepolia.etherscan.io/address/0xC3f4231F619F8D22666d70aeaA5D43EA56498770#code",
       "abiPath": "contracts/artifacts/contracts/ARZYG_ERC20_AI.sol/ARZYG_ERC20_AI.json"
     },
     "ReportVerification": {

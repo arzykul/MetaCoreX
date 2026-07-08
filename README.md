@@ -13,7 +13,7 @@
 
 MetaCoreX is a full-stack Web3/Web4 infrastructure project built around the **ARZY-G ERC-20 AI token** — an on-chain token with an embedded AI integration layer, Chainlink Functions oracle support, and a real-time cyberpunk **Visual Core** operating dashboard.
 
-**Live deployment (Sepolia testnet):** [`0xC3f4231F619F8D22666d70aeaA5D43EA56498770`](https://sepolia.etherscan.io/address/0xC3f4231F619F8D22666d70aeaA5D43EA56498770)
+**Live deployment (Sepolia testnet):** [`0xC3f4231F619F8D22666d70aeaA5D43EA56498770`](https://sepolia.etherscan.io/address/0xC3f4231F619F8D22666d70aeaA5D43EA56498770#code) ([verified source ✅](https://sepolia.etherscan.io/address/0xC3f4231F619F8D22666d70aeaA5D43EA56498770#code))
 **Live dashboard (demo):** https://f20b0ef0-8feb-4dd9-9659-a3e88c053ecf-00-3dndk9nq6wn20.pike.replit.dev/ — deploy your own with [`docs/deploy.md`](docs/deploy.md) for a permanent URL.
 
 ---

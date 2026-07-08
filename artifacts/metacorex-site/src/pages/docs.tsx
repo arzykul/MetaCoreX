@@ -10,6 +10,7 @@ import {
   Link,
   Package,
   ShieldAlert,
+  ShieldCheck,
   Terminal,
 } from "lucide-react";
 
@@ -311,15 +312,27 @@ export default function Docs() {
                     {contractInfo?.address ?? "Loading contract address..."}
                   </code>
                   {contractInfo?.etherscan && (
-                    <a
-                      href={contractInfo.etherscan}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                      data-testid="link-docs-etherscan"
-                    >
-                      View on Etherscan <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    <div className="mt-3 flex flex-wrap items-center gap-4">
+                      <a
+                        href={contractInfo.etherscan}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                        data-testid="link-docs-etherscan"
+                      >
+                        View on Etherscan <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <a
+                        href={`${contractInfo.etherscan}#code`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+                        data-testid="link-docs-etherscan-verified"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                        Contract source verified
+                      </a>
+                    </div>
                   )}
                 </div>
 

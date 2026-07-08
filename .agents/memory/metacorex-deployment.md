@@ -128,8 +128,15 @@ The root `README.md` and `replit.md` had accumulated stale claims from an earlie
 ## Pending Work
 
 1. **Chainlink Subscription** — user has LINK + ETH on deployer wallet; needs to create subscription at functions.chain.link/sepolia, fund it, add the contract as consumer, then add `CHAINLINK_SUBSCRIPTION_ID` to Replit Secrets. Programmatic creation is blocked by Chainlink ToS (must use web UI first). Note: this must be redone against the new (2026-07-05) contract address — a subscription tied to the old address won't authorize the new one as a consumer.
-2. **Etherscan verification** — needs `ETHERSCAN_API_KEY` secret, then run `pnpm --filter @workspace/contracts run verify:sepolia` (against the current live address).
-3. **Contract upgrades** — Staking, Governance, and PoU score tiers discussed as future versions.
+2. **Contract upgrades** — Staking, Governance, and PoU score tiers discussed as future versions.
+
+## Both live contracts are now Etherscan-verified (2026-07-08)
+
+Both `ARZYG_ERC20_AI` and `ReportVerification` have verified source on Sepolia Etherscan. `ARZYG_ERC20_AI` needed `hardhat verify --network sepolia <address> <constructorArgs...>` with args reconstructed from `deploy-sepolia.ts` + `deployed.json` (initialSupply in wei, reserve address, Chainlink router, donID re-encoded via `ethers.zeroPadBytes(toUtf8Bytes(donIdString), 32)` — pads on the right in this ethers version, matching Chainlink's convention — and subscriptionId).
+
+**Why:** `hardhat verify` needs exact constructor args reproduced from source, not just the deployed address; getting the bytes32 DON ID padding direction wrong would silently produce a bytecode/args mismatch and fail verification.
+
+**How to apply:** Any future redeploy of either contract must be re-verified at its new address the same way (verification does not carry over across redeploys, since there's no proxy). `contracts/deployed.json` now tracks `verified`/`verifiedUrl` per contract as the source of truth for whether a given live address is verified.
 
 ## ReportVerification (LIVE, standalone oracle contract)
 
