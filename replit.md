@@ -33,12 +33,12 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 - `contracts/scripts/deploy.ts`, `contracts/scripts/deploy-verification.ts` — deployment scripts (token, ReportVerification)
 - `contracts/artifacts/` — compiled contract ABIs and bytecode (gitignored)
 - `contracts/typechain-types/` — generated TypeScript bindings (gitignored)
-- `artifacts/api-server/src/` — Express API server source
+- `artifacts/api-server/src/` — Express API server source; serves only the JSON API under `/api/*` — no static frontend or SPA fallback (the old `public/index.html` dashboard was removed once `artifacts/metacorex-site` became the real frontend)
 - `artifacts/api-server/src/services/verificationIndexer.ts`, `verificationScorer.ts` — background worker pair that indexes ReportVerification on-chain events and posts standard-tier scores; no HTTP route can trigger `recordVerification` directly
 - `lib/pou-validator/` — shared PoU (Proof of Usefulness) validation package: strict pre-Gemini spam/length checks + the single Gemini-scoring call. Used by the API server (`pouMintService.ts`, `verificationScorer.ts`) and `scripts/src/validator-agent.ts` — no other code path may score a submission.
 - `lib/db/src/schema/verification_requests.ts` — correlates ReportVerification on-chain events with off-chain report text/signatures submitted via the API
 - `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts, including `verify`/`platforms`)
-- `Dockerfile`, `fly.toml` — Fly.io deployment (multi-stage build, only `@workspace/api-server` runs in prod)
+- `Dockerfile`, `fly.toml` — Fly.io deployment (multi-stage build, only `@workspace/api-server` runs in prod; no `public/` dir to copy anymore, image serves API only)
 - `render.yaml` — Render Blueprint (alternative host): `metacorex-api` as a Docker Web Service (reuses `Dockerfile` unchanged) + `metacorex-site` as a Static Site
 - `docs/api.md`, `docs/agent.md`, `docs/deploy.md`, `docs/deploy-render.md`, `docs/economics.md` — API reference, third-party agent connection guide, Fly.io deployment guide, Render deployment guide, ReportVerification fee/cashback/dispute economics
 - `examples/agent-example.js`, `examples/agent_example.py` — standalone (non-workspace) example agents

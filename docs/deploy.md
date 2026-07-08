@@ -1,10 +1,10 @@
 # Deploying MetaCoreX
 
-The API server (which also serves the Visual Core dashboard as static files) ships as a self-contained Docker image and deploys cleanly to [Fly.io](https://fly.io). This doc covers Fly.io, plus the required secrets and how to verify the deploy.
+The API server ships as a self-contained Docker image and deploys cleanly to [Fly.io](https://fly.io). This doc covers Fly.io, plus the required secrets and how to verify the deploy. The frontend (marketing site + dashboard, `@workspace/metacorex-site`) is a separate artifact with its own deployment — see [deploy-render.md](./deploy-render.md) for hosting both together on Render, or build/host `metacorex-site` as a static site anywhere else of your choosing.
 
 ## What gets deployed
 
-Only `@workspace/api-server` runs in production — it's an Express 5 app that serves `public/` (the dashboard) at `/` and the JSON API at `/api/*`. The Hardhat local node, contract compilation, and other workspace packages are dev-time only and are not part of the runtime image.
+Only `@workspace/api-server` runs in this image — it's an Express 5 app that serves only the JSON API at `/api/*` (no frontend). The Hardhat local node, contract compilation, and other workspace packages are dev-time only and are not part of the runtime image.
 
 ## 1. Build the image locally (optional sanity check)
 
@@ -17,7 +17,7 @@ docker run --rm -p 8080:8080 \
 curl http://localhost:8080/api/healthz
 ```
 
-The image is a multi-stage build: a `builder` stage installs the full pnpm workspace and runs `pnpm --filter @workspace/api-server run build` (esbuild bundle), then a slim runtime stage copies out only `dist/`, `public/`, and the `contracts/deployed.json` + `contracts/artifacts` the server reads for contract addresses/ABIs. No `node_modules` are needed at runtime — esbuild bundles all pure-JS dependencies into `dist/index.mjs`.
+The image is a multi-stage build: a `builder` stage installs the full pnpm workspace and runs `pnpm --filter @workspace/api-server run build` (esbuild bundle), then a slim runtime stage copies out only `dist/` and the `contracts/deployed.json` + `contracts/artifacts` the server reads for contract addresses/ABIs. No `node_modules` are needed at runtime — esbuild bundles all pure-JS dependencies into `dist/index.mjs`.
 
 ## 2. Install the Fly.io CLI and log in
 
@@ -71,7 +71,7 @@ curl https://<your-app>.fly.dev/api/healthz
 curl https://<your-app>.fly.dev/api/contract/info
 ```
 
-Open `https://<your-app>.fly.dev/` to see the Visual Core dashboard live.
+This image only serves the JSON API — there's no page to view at `https://<your-app>.fly.dev/`. Deploy `metacorex-site` separately (see [deploy-render.md](./deploy-render.md)) and point it at this API's URL via `VITE_API_BASE_URL`.
 
 ## Database schema
 

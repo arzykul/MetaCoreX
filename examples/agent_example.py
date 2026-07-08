@@ -149,7 +149,7 @@ def main() -> None:
     receipt = send(contract.functions.submitProof(proof_text, amount, score))
     print(f"Proof submitted. txHash={receipt.transactionHash.hex()}")
     print(
-        "Done. Check the Visual Core dashboard or "
+        "Done. Check the Operator Console dashboard or "
         "GET /api/pou/agents/:address for your updated stats."
     )
 

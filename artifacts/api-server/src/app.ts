@@ -1,8 +1,6 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 
@@ -31,22 +29,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve the Visual Core dashboard from /public at the workspace root
-const workspaceRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",   // dist/ → artifact root  (in prod)
-  "..",   // artifact root → artifacts/
-  "..",   // artifacts/ → workspace root
-  "public"
-);
-app.use(express.static(workspaceRoot));
-
+// The frontend (marketing site + dashboard) is a separate artifact
+// (@workspace/metacorex-site) with its own deployment — this server only
+// exposes the JSON API under /api. It no longer serves any static files
+// or an SPA fallback at "/".
 app.use("/api", router);
-
-// SPA fallback — serve index.html for any unknown path (dashboard routes)
-// Express 5 requires named wildcard: /{*path}
-app.get("/{*path}", (_req, res) => {
-  res.sendFile(path.join(workspaceRoot, "index.html"));
-});
 
 export default app;

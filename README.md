@@ -11,10 +11,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](https://www.typescriptlang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-MetaCoreX is a full-stack Web3/Web4 infrastructure project built around the **ARZY-G ERC-20 AI token** — an on-chain token with an embedded AI integration layer, Chainlink Functions oracle support, and a real-time cyberpunk **Visual Core** operating dashboard.
+MetaCoreX is a full-stack Web3/Web4 infrastructure project built around the **ARZY-G ERC-20 AI token** — an on-chain token with an embedded AI integration layer, Chainlink Functions oracle support, and a real-time **Operator Console** dashboard (in the `metacorex-site` frontend).
 
 **Live deployment (Sepolia testnet):** [`0xC3f4231F619F8D22666d70aeaA5D43EA56498770`](https://sepolia.etherscan.io/address/0xC3f4231F619F8D22666d70aeaA5D43EA56498770#code) ([verified source ✅](https://sepolia.etherscan.io/address/0xC3f4231F619F8D22666d70aeaA5D43EA56498770#code))
-**Live dashboard (demo):** https://f20b0ef0-8feb-4dd9-9659-a3e88c053ecf-00-3dndk9nq6wn20.pike.replit.dev/ — deploy your own with [`docs/deploy.md`](docs/deploy.md) for a permanent URL.
+
+Deploy your own with [`docs/deploy.md`](docs/deploy.md) (Fly.io, API only) or [`docs/deploy-render.md`](docs/deploy-render.md) (Render, API + site) for a permanent URL.
 
 ---
 
@@ -28,7 +29,7 @@ MetaCoreX is a full-stack Web3/Web4 infrastructure project built around the **AR
 - [Smart Contract](#smart-contract)
 - [API Reference](#api-reference)
 - [Quick Start](#quick-start)
-- [Visual Core Dashboard](#visual-core-dashboard)
+- [Operator Console Dashboard](#operator-console-dashboard)
 - [Connect Your Own Agent](#connect-your-own-agent)
 - [Deployment](#deployment)
 - [Tech Stack](#tech-stack)
@@ -85,7 +86,7 @@ Every submitted proof carries a **PoU Score** — an integer from `0` to `10` �
 | `requestUsefulness` → oracle callback | `0` | `OracleProofRejected` — no mint |
 | `requestUsefulness` → oracle callback | `≥ 1` | `TokenBirthed` — mints the full pre-agreed amount (99% agent / 1% reserve) |
 
-The PoU Score is displayed in real time on the Visual Core Dashboard as a progress bar.
+The PoU Score is displayed in real time on the Operator Console dashboard.
 
 ### Roles
 
@@ -118,9 +119,9 @@ This prevents runaway minting while still allowing high-throughput AI pipelines 
 │                        MetaCoreX OS                             │
 │                                                                 │
 │  ┌──────────────────┐    WebSocket     ┌─────────────────────┐  │
-│  │  Visual Core     │◄────────────────▶│   API Server        │  │
-│  │  Dashboard       │   /api/ws        │   (Express 5)       │  │
-│  │  (public/)       │                  │   port 8080         │  │
+│  │  metacorex-site  │◄────────────────▶│   API Server        │  │
+│  │  (marketing +    │   /api/ws        │   (Express 5)       │  │
+│  │   dashboard)     │                  │   port 8080         │  │
 │  └──────────────────┘                  └────────┬────────────┘  │
 │                                                 │               │
 │                                        ┌────────▼────────────┐  │
@@ -146,7 +147,7 @@ This prevents runaway minting while still allowing high-throughput AI pipelines 
 
 ### Event Flow
 
-The MetaCoreX **EventBus** (`src/ws/eventBus.ts`) is the central nervous system of the OS. All on-chain events are captured by `ContractService` via ethers.js listeners and republished to all connected dashboard clients over WebSocket in real time.
+The MetaCoreX **EventBus** (`src/ws/eventBus.ts`) is the central nervous system of the OS. All on-chain events are captured by `ContractService` via ethers.js listeners and republished to all connected `metacorex-site` dashboard clients over WebSocket in real time.
 
 ```
 Blockchain Event  ──▶  ContractService  ──▶  McxEventBus  ──▶  WebSocket  ──▶  Dashboard
@@ -202,26 +203,28 @@ MetaCoreX/
 │   └── package.json                    # @workspace/contracts
 │
 ├── artifacts/
-│   └── api-server/                     # Express 5 API + WebSocket server
-│       ├── src/
-│       │   ├── index.ts                # HTTP server entry point, ContractService init
-│       │   ├── app.ts                  # Express app, static file serving, routes
-│       │   ├── lib/
-│       │   │   └── logger.ts           # Pino structured logger singleton
-│       │   ├── routes/
-│       │   │   ├── index.ts            # Route aggregator
-│       │   │   ├── health.ts           # GET /api/healthz
-│       │   │   ├── events.ts           # POST /api/events/emit, GET /api/events/demo
-│       │   │   └── contract.ts         # GET /api/contract/info, POST /api/contract/mint-demo
-│       │   ├── services/
-│       │   │   └── contractService.ts  # ethers.js blockchain bridge + event listeners
-│       │   └── ws/
-│       │       ├── eventBus.ts         # McxEventBus singleton (Node EventEmitter)
-│       │       └── wsServer.ts         # WebSocket server, fan-out to all clients
-│       ├── build.mjs                   # esbuild bundle script
-│       ├── .replit-artifact/
-│       │   └── artifact.toml           # Service routing config (paths: ["/", "/api"])
-│       └── package.json                # @workspace/api-server
+│   ├── api-server/                     # Express 5 API + WebSocket server
+│   │   ├── src/
+│   │   │   ├── index.ts                # HTTP server entry point, ContractService init
+│   │   │   ├── app.ts                  # Express app, JSON API routes only (no static frontend)
+│   │   │   ├── lib/
+│   │   │   │   └── logger.ts           # Pino structured logger singleton
+│   │   │   ├── routes/
+│   │   │   │   ├── index.ts            # Route aggregator
+│   │   │   │   ├── health.ts           # GET /api/healthz
+│   │   │   │   ├── events.ts           # POST /api/events/emit, GET /api/events/demo
+│   │   │   │   └── contract.ts         # GET /api/contract/info, POST /api/contract/mint-demo
+│   │   │   ├── services/
+│   │   │   │   └── contractService.ts  # ethers.js blockchain bridge + event listeners
+│   │   │   └── ws/
+│   │   │       ├── eventBus.ts         # McxEventBus singleton (Node EventEmitter)
+│   │   │       └── wsServer.ts         # WebSocket server, fan-out to all clients
+│   │   ├── build.mjs                   # esbuild bundle script
+│   │   ├── .replit-artifact/
+│   │   │   └── artifact.toml           # Service routing config (paths: ["/", "/api"])
+│   │   └── package.json                # @workspace/api-server
+│   │
+│   └── metacorex-site/                 # React/Vite marketing site + dashboard (separate deploy)
 │
 ├── lib/                                # Shared workspace libraries
 │   ├── api-spec/
@@ -229,9 +232,6 @@ MetaCoreX/
 │   ├── api-zod/                        # Generated Zod schemas from OpenAPI spec
 │   ├── api-client-react/               # Generated React Query hooks from OpenAPI spec
 │   └── db/                             # Drizzle ORM schema + PostgreSQL client
-│
-├── public/
-│   └── index.html                      # Visual Core cyberpunk dashboard (vanilla JS + WS)
 │
 ├── os/
 │   └── EventBus.js                     # OS-level EventBus prototype
@@ -349,9 +349,17 @@ pnpm --filter @workspace/contracts run deploy:local
 pnpm --filter @workspace/api-server run dev
 ```
 
-The Visual Core dashboard is now live at **http://localhost:8080**.
+This serves only the JSON API at `/api/*` (health check: `http://localhost:8080/api/healthz`).
 
-### 5. Run contract tests
+### 5. Run the frontend
+
+```bash
+pnpm --filter @workspace/metacorex-site run dev
+```
+
+The Operator Console dashboard and marketing site are now live wherever that dev server prints its local URL.
+
+### 6. Run contract tests
 
 ```bash
 pnpm --filter @workspace/contracts run test
@@ -369,37 +377,11 @@ pnpm --filter @workspace/contracts run test
 
 ---
 
-## Visual Core Dashboard
+## Operator Console Dashboard
 
-The **Visual Core** is a real-time cyberpunk OS interface that bridges the blockchain and the operator:
+The **Operator Console** (`artifacts/metacorex-site`, the `/dashboard` route) is the real-time interface that bridges the blockchain and the operator — token balance/supply, agent status and PoU score, the live on-chain event feed, and PoU/verification submission tabs. It talks to the API server's JSON routes and subscribes to the `McxEventBus` over `/api/ws` for live updates (`MintRequested`, `TokenBirthed`, `AgentStatusChanged`, etc.) — see [Event Flow](#event-flow) above.
 
-```
-┌─ ARZY-G TOKEN CORE ───────┐  ┌─ AI AGENT CORE ──────────┐  ┌─ SYSTEM ACTIONS ────────┐
-│                            │  │                           │  │                         │
-│  1,000,000.00  ARZYG       │  │ STATUS      ● ACTIVE      │  │  ⛓ MINT ON-CHAIN        │
-│                            │  │ PoU SCORE   ████░░ 60%    │  │  ▶ RUN DEMO SEQUENCE    │
-│  CORE ADDR  0xe7f1…0512    │  │ PENDING     3              │  │  ⬡ EMIT MINT_REQUESTED  │
-│  TOTAL MINTED  1,001,000   │  │ ORACLE    api.arzy.ai     │  │  ✦ EMIT TOKEN_BIRTHED   │
-│  PROTOCOL FEE  1%          │  │ DON       fun-test-1      │  │  ✕ EMIT PROOF_REJECTED  │
-│  NETWORK  HARDHAT:31337    │  │                           │  │                         │
-│  BLOCK    #4               │  │ PoU ████████░░░░░░  60%   │  └─────────────────────────┘
-└────────────────────────────┘  └───────────────────────────┘
-┌─ SYSTEM EVENT LOG — METACOREX EVENTBUS ─────────────────────────────────── AUTO-SCROLL: ON ┐
-│ 13:19:39  MintRequested   requestId:0x82b2… · to:0x7099… · amount:1000000000…             │
-│ 13:19:39  TokenBirthed    agent:0x7099… · rewardAmount:990000… · feeAmount:10000…          │
-│ 13:19:39  AgentStatusChanged  status:active                                                 │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-**MINT ON-CHAIN** triggers the full on-chain PoU cycle:
-1. `requestUsefulness` transaction → Hardhat block mined
-2. `MockFunctionsRouter.fulfillSuccess` → oracle callback
-3. `birthToken` splits reward: 99% to agent, 1% to reserve
-4. Dashboard updates balance and total supply in real time
-
-### Screenshot
-
-![Visual Core Dashboard](docs/screenshots/visual-core-dashboard.jpg)
+It is a separate deployable artifact from the API server; run it locally with `pnpm --filter @workspace/metacorex-site run dev`, or deploy it independently per [`docs/deploy-render.md`](docs/deploy-render.md).
 
 ---
 

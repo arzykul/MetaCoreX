@@ -109,7 +109,7 @@ async function main() {
   const receipt = await tx.wait();
   console.log(`Proof submitted. txHash=${receipt.hash}`);
   console.log(
-    "Done. Check the Visual Core dashboard or GET /api/pou/agents/:address for your updated stats."
+    "Done. Check the Operator Console dashboard or GET /api/pou/agents/:address for your updated stats."
   );
 }
 

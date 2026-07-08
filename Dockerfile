@@ -1,17 +1,20 @@
 # MetaCoreX API Server — production image for Fly.io (or any Docker host).
 #
-# This builds ONLY @workspace/api-server (the Express API + the static
-# "Visual Core" dashboard it serves at "/"). The other artifacts in this
-# monorepo (metacorex-site, diabeto, personal-agent, mockup-sandbox) are
-# Replit-only previews and are not part of this image.
+# This builds ONLY @workspace/api-server (the Express JSON API under /api).
+# The frontend (marketing site + dashboard) is a separate artifact
+# (@workspace/metacorex-site) deployed independently — see render.yaml and
+# docs/deploy-render.md. The other artifacts in this monorepo (diabeto,
+# personal-agent, mockup-sandbox) are Replit-only previews and are not part
+# of this image either.
 #
 # The final runtime stage deliberately mirrors this repo's own directory
 # depth (artifacts/api-server/dist two levels under the image root, with
-# public/ and contracts/ as siblings of "artifacts/") because
-# artifacts/api-server/src/app.ts and src/services/contractService.ts both
-# resolve paths as `resolve(process.cwd(), "..", "..")` to find the
-# workspace root at runtime. Keep that layout in sync with this Dockerfile
-# if those resolution paths ever change.
+# contracts/ as a sibling of "artifacts/") because
+# artifacts/api-server/src/services/contractService.ts and
+# src/routes/agent.ts both resolve paths as
+# `resolve(process.cwd(), "..", "..")` to find the workspace root at
+# runtime. Keep that layout in sync with this Dockerfile if those
+# resolution paths ever change.
 
 # ---- deps + build -----------------------------------------------------
 FROM node:24-slim AS builder
@@ -39,11 +42,10 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
-# Mirror the monorepo's own nesting: contracts/ and public/ sit two levels
-# above artifacts/api-server, matching the `resolve(cwd, "..", "..")` calls
-# in the server source.
+# Mirror the monorepo's own nesting: contracts/ sits two levels above
+# artifacts/api-server, matching the `resolve(cwd, "..", "..")` calls in
+# the server source.
 COPY --from=builder /repo/artifacts/api-server/dist ./artifacts/api-server/dist
-COPY --from=builder /repo/public ./public
 COPY --from=builder /repo/contracts/deployed.json ./contracts/deployed.json
 COPY --from=builder /repo/contracts/artifacts ./contracts/artifacts
 
