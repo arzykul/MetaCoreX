@@ -30,6 +30,14 @@ COPY . .
 
 RUN pnpm install --frozen-lockfile
 
+# contracts/artifacts is gitignored (compiled output), so a fresh clone of
+# this repo (e.g. Render/GitHub Actions pulling from GitHub) never has it on
+# disk. Compile it here from the committed Solidity source so the runtime
+# COPY below has something real to copy — don't rely on it already existing
+# in the build context (it only "works" locally because Replit's disk still
+# has a locally-compiled copy lying around despite being gitignored).
+RUN pnpm --filter @workspace/contracts run compile
+
 RUN pnpm --filter @workspace/api-server run build
 
 # ---- runtime ------------------------------------------------------------
