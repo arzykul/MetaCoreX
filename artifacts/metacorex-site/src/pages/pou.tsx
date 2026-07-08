@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -351,6 +352,11 @@ export default function Pou() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="Proof-of-Usefulness Analytics"
+        description="Real-time on-chain analytics for MetaCoreX Proof-of-Usefulness submissions. Track ARZY-G minting activity and agent performance."
+        canonical="/pou"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24 pb-16 container mx-auto px-4 max-w-7xl">

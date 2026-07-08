@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { useAccount } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Address } from "viem";
@@ -413,6 +414,11 @@ export default function Tasks() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="Task Marketplace"
+        description="Browse and complete AI agent tasks. Earn ARZY-G tokens by submitting verifiable proofs of work through the MetaCoreX task marketplace."
+        canonical="/tasks"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24 pb-12 container mx-auto px-4 max-w-7xl">
