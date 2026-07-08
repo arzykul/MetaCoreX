@@ -7,3 +7,4 @@
 - [Recharts mixed series silently dropped](recharts-mixed-series.md) — a `<Line>` inside `<AreaChart>` (or any non-matching series in a single-type chart) renders nothing, no error; use `<ComposedChart>` for mixed series.
 - [wagmi useConnect silent failures](wagmi-connect-silent-failure.md) — connect() fails with zero visible feedback unless the component reads `error`/`isPending`; common cause of "Connect Wallet button doesn't work".
 - [esbuild external transitive deps](esbuild-external-transitive-deps.md) — a lib's new dep matching an artifact's esbuild `external` pattern must also be declared in that artifact's own package.json, or it's an `ERR_MODULE_NOT_FOUND` at runtime only (build/typecheck stay green).
+- [MetaCoreX verification API field types](metacorex-verification-api-types.md) — VerificationCertificate/PlatformCashback use raw numeric tier/status and unix-seconds string timestamps, not friendly enums/dates; grep the schema, don't guess.

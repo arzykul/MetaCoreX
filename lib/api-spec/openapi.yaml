@@ -22,6 +22,10 @@ tags:
     description: Dashboard statistics
   - name: openrouter
     description: OpenRouter AI chat operations
+  - name: verify
+    description: ReportVerification oracle — submit report text and read certificates
+  - name: platforms
+    description: Platform referral cashback balances
 
 paths:
   /healthz:
@@ -509,6 +513,81 @@ paths:
                 items:
                   $ref: "#/components/schemas/ActivityItem"
 
+  /verify/submit:
+    post:
+      operationId: submitVerificationReport
+      tags: [verify]
+      summary: Submit report text + signature for a ReportVerification request
+      description: >
+        Records the plaintext report text for a verification request. Report
+        text never touches the chain — only its keccak256 hash does, computed
+        here the same way the agent computed it before calling
+        requestVerification() on-chain (ethers `id(reportText)` /
+        Solidity `keccak256(bytes(reportText))`). This never triggers
+        on-chain scoring itself — a background worker picks up rows once both
+        the report text and the on-chain request are present.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerificationSubmitInput"
+      responses:
+        "200":
+          description: Report text recorded (and merged with the on-chain request if already indexed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationSubmitResponse"
+        "400":
+          description: Invalid input
+        "401":
+          description: Signature does not match agentAddress
+        "409":
+          description: This request is currently being scored
+
+  /verify/{requestId}:
+    get:
+      operationId: getVerificationCertificate
+      tags: [verify]
+      summary: Get a verification certificate by on-chain request id
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Certificate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationCertificate"
+        "404":
+          description: Not found
+
+  /platforms/{address}/cashback:
+    get:
+      operationId: getPlatformCashback
+      tags: [platforms]
+      summary: Get a platform/referrer address's claimable cashback balance
+      parameters:
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Claimable cashback balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformCashback"
+        "400":
+          description: Invalid address
+
 components:
   schemas:
     HealthStatus:
@@ -764,3 +843,79 @@ components:
       properties:
         error:
           type: string
+
+    VerificationSubmitInput:
+      type: object
+      required: [agentAddress, reportText, signature, tier]
+      properties:
+        agentAddress:
+          type: string
+          description: The wallet address that called requestVerification() on-chain (or will).
+        reportText:
+          type: string
+          minLength: 1
+          description: The plaintext report — never stored on-chain, only its hash.
+        signature:
+          type: string
+          description: EIP-191 personal_sign signature over reportText, proving agentAddress authored it.
+        tier:
+          type: string
+          enum: [standard, premium]
+          description: >
+            Declared intent only — the authoritative tier is whatever was
+            passed to requestVerification() on-chain; the indexer overwrites
+            this once the on-chain event is observed.
+
+    VerificationSubmitResponse:
+      type: object
+      required: [ok, reportHash, status]
+      properties:
+        ok:
+          type: boolean
+        reportHash:
+          type: string
+        status:
+          type: string
+          enum: [awaiting_chain, awaiting_text, ready_to_score, scoring, posted, disputed, finalized, failed]
+        onchainRequestId:
+          type: ["string", "null"]
+        alreadyProcessed:
+          type: boolean
+
+    VerificationCertificate:
+      type: object
+      required: [requestId, agent, reportHash, tier, referrer, fee, score, status, requestedAt, postedAt]
+      properties:
+        requestId:
+          type: string
+        agent:
+          type: string
+        reportHash:
+          type: string
+        tier:
+          type: integer
+          description: 0 = standard, 1 = premium
+        referrer:
+          type: string
+        fee:
+          type: string
+          description: Fee amount in ARZY-G (decimal string).
+        score:
+          type: integer
+        status:
+          type: integer
+          description: 0=None, 1=Requested, 2=Posted, 3=Disputed, 4=Finalized
+        requestedAt:
+          type: string
+        postedAt:
+          type: string
+
+    PlatformCashback:
+      type: object
+      required: [address, claimableArzyg]
+      properties:
+        address:
+          type: string
+        claimableArzyg:
+          type: string
+          description: Claimable cashback balance in ARZY-G (decimal string). Platforms withdraw it themselves on-chain via claimRewards().

@@ -24,7 +24,32 @@ interface DeployedInfo {
       address: string;
       abiPath: string;
     };
+    // ReportVerification is a fully independent contract (its own deploy,
+    // own roles) — added alongside ARZYG_ERC20_AI, never replacing it.
+    ReportVerification?: {
+      address: string;
+      deployer: string;
+      treasury: string;
+      oracleAddress: string;
+      arbiterAddress: string;
+      abiPath: string;
+      etherscan?: string;
+      deploymentBlock?: number | null;
+    };
   };
+}
+
+export interface VerificationCertificate {
+  requestId: string;
+  agent: string;
+  reportHash: string;
+  tier: number;
+  referrer: string;
+  fee: string;
+  score: number;
+  status: number;
+  requestedAt: string;
+  postedAt: string;
 }
 
 export interface AgentInfo {
@@ -76,6 +101,10 @@ class ContractService {
   private signer:      ethers.Wallet | ethers.JsonRpcSigner | null = null;
   private token:       ethers.Contract | null = null;
   private mockRouter:  ethers.Contract | null = null;
+  // ReportVerification — independent contract, own connection state. Kept
+  // separate from `token`/`mockRouter` above; never shares an ABI or address
+  // with the ARZY-G token.
+  private reportVerification: ethers.Contract | null = null;
   private deployed:    DeployedInfo    | null = null;
   private _connected = false;
   private _retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -544,6 +573,19 @@ class ContractService {
     return this.deployed?.contracts.ARZYG_ERC20_AI.deploymentBlock ?? null;
   }
 
+  /** Block ReportVerification was deployed at — anchors its own, separate indexer. */
+  get reportVerificationDeploymentBlock(): number | null {
+    return this.deployed?.contracts.ReportVerification?.deploymentBlock ?? null;
+  }
+
+  get reportVerificationAddress(): string | null {
+    return this.deployed?.contracts.ReportVerification?.address ?? null;
+  }
+
+  get reportVerificationConnected(): boolean {
+    return this.reportVerification !== null;
+  }
+
   async getCurrentBlockNumber(): Promise<number | null> {
     if (!this.provider) return null;
     return this.provider.getBlockNumber();
@@ -595,6 +637,171 @@ class ContractService {
       blockNumber: e.blockNumber,
       blockTimestamp: blockTimestamps.get(e.blockNumber) ?? new Date(),
     }));
+  }
+
+  // ── ReportVerification: event scanning (feeds verificationIndexer.ts) ──────
+
+  /**
+   * Scans [fromBlock, toBlock] for every ReportVerification lifecycle event.
+   * Must return ALL of Requested/Posted/Disputed/Resolved/Finalized — dispute
+   * and arbiter resolution happen entirely on-chain (no API route involved),
+   * so the indexer is the only place the DB can learn about them. Missing
+   * any one of these means a request's DB status can silently go stale
+   * forever (see verification_requests schema note).
+   */
+  async scanVerificationEvents(
+    fromBlock: number,
+    toBlock: number
+  ): Promise<{
+    requested: Array<{
+      requestId: string;
+      agentAddress: string;
+      reportHash: string;
+      tier: number;
+      referrer: string;
+      feeWei: string;
+      txHash: string;
+      logIndex: number;
+      blockNumber: number;
+      blockTimestamp: Date;
+    }>;
+    posted: Array<{ requestId: string; score: number; txHash: string; logIndex: number; blockNumber: number }>;
+    disputed: Array<{
+      requestId: string;
+      disputerAddress: string;
+      bondWei: string;
+      txHash: string;
+      logIndex: number;
+      blockNumber: number;
+    }>;
+    resolved: Array<{
+      requestId: string;
+      upheld: boolean;
+      newScore: number;
+      txHash: string;
+      logIndex: number;
+      blockNumber: number;
+    }>;
+    finalized: Array<{
+      requestId: string;
+      cashbackWei: string;
+      treasuryAmountWei: string;
+      txHash: string;
+      logIndex: number;
+      blockNumber: number;
+    }>;
+  }> {
+    const empty = { requested: [], posted: [], disputed: [], resolved: [], finalized: [] };
+    if (!this.reportVerification || fromBlock > toBlock) return empty;
+
+    const rv = this.reportVerification;
+    const [requestedLogs, postedLogs, disputedLogs, resolvedLogs, finalizedLogs] = await Promise.all([
+      this._queryFilterAdaptive(rv.filters.VerificationRequested(), fromBlock, toBlock),
+      this._queryFilterAdaptive(rv.filters.VerificationPosted(), fromBlock, toBlock),
+      this._queryFilterAdaptive(rv.filters.VerificationDisputed(), fromBlock, toBlock),
+      this._queryFilterAdaptive(rv.filters.VerificationResolved(), fromBlock, toBlock),
+      this._queryFilterAdaptive(rv.filters.VerificationFinalized(), fromBlock, toBlock),
+    ]);
+
+    // Only the "requested" row persists a blockTimestamp column, so only
+    // fetch block times for that subset (one lookup per distinct block).
+    const requestedBlockNumbers = [...new Set(requestedLogs.map((e) => e.blockNumber))];
+    const requestedBlockTimestamps = new Map<number, Date>();
+    for (const bn of requestedBlockNumbers) {
+      const block = await this.provider?.getBlock(bn);
+      requestedBlockTimestamps.set(bn, block ? new Date(block.timestamp * 1000) : new Date());
+    }
+
+    return {
+      requested: requestedLogs.map((e) => ({
+        requestId: (e.args.requestId as bigint).toString(),
+        agentAddress: (e.args.agent as string).toLowerCase(),
+        reportHash: e.args.reportHash as string,
+        tier: Number(e.args.tier as bigint),
+        referrer: (e.args.referrer as string).toLowerCase(),
+        feeWei: (e.args.fee as bigint).toString(),
+        txHash: e.transactionHash,
+        logIndex: e.index,
+        blockNumber: e.blockNumber,
+        blockTimestamp: requestedBlockTimestamps.get(e.blockNumber) ?? new Date(),
+      })),
+      posted: postedLogs.map((e) => ({
+        requestId: (e.args.requestId as bigint).toString(),
+        score: Number(e.args.score as bigint),
+        txHash: e.transactionHash,
+        logIndex: e.index,
+        blockNumber: e.blockNumber,
+      })),
+      disputed: disputedLogs.map((e) => ({
+        requestId: (e.args.requestId as bigint).toString(),
+        disputerAddress: (e.args.disputer as string).toLowerCase(),
+        bondWei: (e.args.bond as bigint).toString(),
+        txHash: e.transactionHash,
+        logIndex: e.index,
+        blockNumber: e.blockNumber,
+      })),
+      resolved: resolvedLogs.map((e) => ({
+        requestId: (e.args.requestId as bigint).toString(),
+        upheld: e.args.upheld as boolean,
+        newScore: Number(e.args.newScore as bigint),
+        txHash: e.transactionHash,
+        logIndex: e.index,
+        blockNumber: e.blockNumber,
+      })),
+      finalized: finalizedLogs.map((e) => ({
+        requestId: (e.args.requestId as bigint).toString(),
+        cashbackWei: (e.args.cashback as bigint).toString(),
+        treasuryAmountWei: (e.args.treasuryAmount as bigint).toString(),
+        txHash: e.transactionHash,
+        logIndex: e.index,
+        blockNumber: e.blockNumber,
+      })),
+    };
+  }
+
+  // ── ReportVerification: oracle-signed writes (worker-only, never a route) ──
+
+  /**
+   * Posts a score for a pending verification request as the server's own
+   * validator wallet (ORACLE_ROLE on ReportVerification — granted at deploy
+   * time to the same AGENT_PRIVATE_KEY wallet used for PoU minting). Mirrors
+   * submitProofAsValidator()'s trust model: no route may call this directly,
+   * only the scoring worker after it has computed a real Gemini score.
+   */
+  async recordVerificationAsOracle(requestId: bigint, score: number): Promise<{ txHash: string }> {
+    if (!this.reportVerification) {
+      throw new Error("ReportVerification not connected");
+    }
+    const wallet = this._getValidatorWallet();
+    const rvWithSigner = this.reportVerification.connect(wallet) as ethers.Contract;
+    const tx = await rvWithSigner.recordVerification(requestId, score);
+    const receipt = await tx.wait();
+    return { txHash: receipt?.hash ?? tx.hash };
+  }
+
+  /** Read-only certificate lookup — used by GET /verify/:requestId. */
+  async getVerificationCertificate(requestId: bigint): Promise<VerificationCertificate | null> {
+    if (!this.reportVerification) return null;
+    const result = await this.reportVerification.getCertificate(requestId);
+    return {
+      requestId: requestId.toString(),
+      agent: (result.agent as string).toLowerCase(),
+      reportHash: result.reportHash as string,
+      tier: Number(result.tier as bigint),
+      referrer: (result.referrer as string).toLowerCase(),
+      fee: ethers.formatEther(result.fee as bigint),
+      score: Number(result.score as bigint),
+      status: Number(result.status as bigint),
+      requestedAt: "0", // not exposed by getCertificate; requested time comes from the DB row
+      postedAt: (result.postedAt as bigint).toString(),
+    };
+  }
+
+  /** Read-only claimable cashback balance for a referrer/platform address. */
+  async getClaimableCashback(address: string): Promise<string | null> {
+    if (!this.reportVerification) return null;
+    const amount = await this.reportVerification.claimableCashback(address);
+    return ethers.formatEther(amount as bigint);
   }
 
   // ── Connection lifecycle ────────────────────────────────────────────────────
@@ -663,6 +870,27 @@ class ContractService {
             routerAbi,
             provider
           );
+        }
+      }
+
+      // ReportVerification — independent contract, optional in deployed.json
+      // until its own deploy has run. Never blocks ARZY-G connection if
+      // absent or not-yet-compiled; it simply stays disconnected until then.
+      if (deployed.contracts.ReportVerification) {
+        const rvAbiPath = resolve(_workspaceRoot, deployed.contracts.ReportVerification.abiPath);
+        if (existsSync(rvAbiPath)) {
+          const rvAbi = JSON.parse(readFileSync(rvAbiPath, "utf-8")).abi;
+          this.reportVerification = new ethers.Contract(
+            deployed.contracts.ReportVerification.address,
+            rvAbi,
+            provider
+          );
+          logger.info(
+            { address: deployed.contracts.ReportVerification.address },
+            "contractService: connected to ReportVerification"
+          );
+        } else {
+          logger.info({ rvAbiPath }, "contractService: ReportVerification ABI not found — waiting for compile");
         }
       }
 
@@ -764,10 +992,12 @@ class ContractService {
 
   private _handleDisconnect(): void {
     if (this.token) this.token.removeAllListeners().catch(() => {});
+    if (this.reportVerification) this.reportVerification.removeAllListeners().catch(() => {});
     this.provider   = null;
     this.signer     = null;
     this.token      = null;
     this.mockRouter = null;
+    this.reportVerification = null;
     this._connected = false;
     this.agentAddressCache = new Set();
     this.agentScanBlock = 0;

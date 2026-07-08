@@ -28,16 +28,19 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 ## Where things live
 
 - `contracts/contracts/ARZYG_ERC20_AI.sol` — ARZY-G ERC-20 AI token (main contract)
+- `contracts/contracts/ReportVerification.sol` — standalone Proof-of-Usefulness verification oracle (report scoring, fees/cashback, optimistic disputes); independent from the token, never shares state or role grants with it
 - `contracts/hardhat.config.ts` — Hardhat configuration
-- `contracts/scripts/deploy.ts` — deployment script
+- `contracts/scripts/deploy.ts`, `contracts/scripts/deploy-verification.ts` — deployment scripts (token, ReportVerification)
 - `contracts/artifacts/` — compiled contract ABIs and bytecode (gitignored)
 - `contracts/typechain-types/` — generated TypeScript bindings (gitignored)
 - `artifacts/api-server/src/` — Express API server source
-- `lib/pou-validator/` — shared PoU (Proof of Usefulness) validation package: strict pre-Gemini spam/length checks + the single Gemini-scoring call. Used by the API server (`pouMintService.ts`) and `scripts/src/validator-agent.ts` — no other code path may score a submission.
-- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts)
+- `artifacts/api-server/src/services/verificationIndexer.ts`, `verificationScorer.ts` — background worker pair that indexes ReportVerification on-chain events and posts standard-tier scores; no HTTP route can trigger `recordVerification` directly
+- `lib/pou-validator/` — shared PoU (Proof of Usefulness) validation package: strict pre-Gemini spam/length checks + the single Gemini-scoring call. Used by the API server (`pouMintService.ts`, `verificationScorer.ts`) and `scripts/src/validator-agent.ts` — no other code path may score a submission.
+- `lib/db/src/schema/verification_requests.ts` — correlates ReportVerification on-chain events with off-chain report text/signatures submitted via the API
+- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts, including `verify`/`platforms`)
 - `Dockerfile`, `fly.toml` — Fly.io deployment (multi-stage build, only `@workspace/api-server` runs in prod)
 - `render.yaml` — Render Blueprint (alternative host): `metacorex-api` as a Docker Web Service (reuses `Dockerfile` unchanged) + `metacorex-site` as a Static Site
-- `docs/api.md`, `docs/agent.md`, `docs/deploy.md`, `docs/deploy-render.md` — API reference, third-party agent connection guide, Fly.io deployment guide, Render deployment guide
+- `docs/api.md`, `docs/agent.md`, `docs/deploy.md`, `docs/deploy-render.md`, `docs/economics.md` — API reference, third-party agent connection guide, Fly.io deployment guide, Render deployment guide, ReportVerification fee/cashback/dispute economics
 - `examples/agent-example.js`, `examples/agent_example.py` — standalone (non-workspace) example agents
 
 ## Architecture decisions
@@ -48,6 +51,8 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 - AI daily mint quota is enforced on-chain using a UTC day epoch (`block.timestamp / 1 days`), shared globally (`dailyMintLimit`) and per-agent (`agentDailyCap`) across both mint paths (`submitProof` and `birthToken`).
 - No ERC-2612 Permit and no `Pausable` — the contract is intentionally minimal (`ERC20` + `AccessControl` only); don't assume these exist when writing docs or examples.
 - PoU minting is server-signed only, never client-signed: both the task-marketplace "complete" flow and the Dashboard's manual "Submit Proof of Use" tab send free-text proof to the API, which scores it via `lib/pou-validator` (strict validation, then Gemini) and — only on a passing score — mints from the server's own validator wallet (`AGENT_PRIVATE_KEY`) and forwards the reward. The frontend never sees a score, an amount, or the validator's key, and never signs a `submitProof` mint tx itself. The Dashboard flow additionally requires an EIP-191 wallet signature over the proof text (proves authorship without exposing the key) before the server will score it.
+- `ReportVerification.sol` is a fully standalone contract (own `ORACLE_ROLE`/`ARBITER_ROLE`/`DEFAULT_ADMIN_ROLE`), never granted any role on the ARZY-G token and never bundled into the token's deploy script — it only reads the token through `IERC20`. Deploying or upgrading it must never touch `ARZYG_ERC20_AI.sol` or its role grants.
+- `ReportVerification`'s standard (Gemini) tier reuses the exact same trust model as PoU minting: the server's existing validator wallet is granted `ORACLE_ROLE` and is the only caller of `recordVerification`, via a background worker (`verificationScorer.ts`) — no HTTP route triggers scoring directly. The premium (Chainlink Functions) tier is real code, not a stub, but ships with `premiumEnabled = false` since the live token's Chainlink subscription was never funded; don't assume premium is active without checking `premiumEnabled` on-chain.
 
 ## Product
 
@@ -56,6 +61,11 @@ MetaCoreX ARZY-G (`ERC20` + `AccessControl`, no Permit/Pausable) is an ERC-20 to
 - Roles: `DEFAULT_ADMIN_ROLE` (governance, reassigns `RESERVE_ROLE`), `DEV_ADMIN_ROLE` (triggers `requestUsefulness`, sets daily quotas), `RESERVE_ROLE` (fee reserve address) — there is no `MINTER_ROLE`, `AI_OPERATOR_ROLE`, or `PAUSER_ROLE`
 - `registerAgent` / `submitProof`: fully permissionless proof-of-work mint (`reward = amount * score / 10`, self-reported by the caller), bounded by a hard `MAX_SUPPLY` (1,000,000,000 ARZY-G, enforced in `_update`), an admin-configurable global `dailyMintLimit` (default 10,000/day), an admin-configurable per-agent `agentDailyCap` (default 1,000/day), and a `score <= 10` sanity check
 - `requestUsefulness` → `handleOracleFulfillment` → `birthToken`: oracle-verified path (`DEV_ADMIN_ROLE` triggers the request; only the Chainlink Functions router can fulfill it) that mints the full pre-agreed amount split 99% agent / 1% reserve when score ≥ 1, sharing the same daily-quota enforcement as `submitProof`
+
+`ReportVerification` (separate contract, live on Sepolia at `0xA25D6ed371de357A4d4C0111AAaC1e199B575975`) is a universal PoU verification oracle built on top of ARZY-G — see [`docs/economics.md`](./docs/economics.md) for the full model:
+- Any agent pays a flat fee (3 ARZY-G standard/Gemini tier, 5 ARZY-G premium/Chainlink tier — premium shipped but admin-disabled until a real subscription is funded) directly from their own wallet to have a free-text report scored
+- Every finalized fee splits 10% referrer cashback (pull-based via `claimRewards()`, or stays with the treasury if no referrer) / 90% protocol treasury — no buyback/reserve cut
+- Optimistic dispute flow: scores post with a 24h challenge window; anyone can dispute with a 2x-fee bond during that window, an `ARBITER_ROLE` address resolves it (upheld → bond refunded + score corrected; rejected → bond forfeited to treasury)
 
 ## Connecting your own agent via GitHub
 

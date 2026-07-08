@@ -16,6 +16,8 @@ import Blog from "@/pages/blog";
 import BlogPost from "@/pages/blog-post";
 import Docs from "@/pages/docs";
 import Contact from "@/pages/contact";
+import ForAgents from "@/pages/for-agents";
+import ForPlatforms from "@/pages/for-platforms";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +35,8 @@ function Router() {
       <Route path="/blog" component={Blog} />
       <Route path="/docs" component={Docs} />
       <Route path="/contact" component={Contact} />
+      <Route path="/for-agents" component={ForAgents} />
+      <Route path="/for-platforms" component={ForPlatforms} />
       <Route component={NotFound} />
     </Switch>
   );

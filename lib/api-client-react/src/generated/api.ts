@@ -37,12 +37,16 @@ import type {
   OpenrouterError,
   OpenrouterMessage,
   OpenrouterMessageInput,
+  PlatformCashback,
   Reminder,
   ReminderInput,
   ReminderUpdate,
   Task,
   TaskInput,
-  TaskUpdate
+  TaskUpdate,
+  VerificationCertificate,
+  VerificationSubmitInput,
+  VerificationSubmitResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1983,6 +1987,233 @@ export function useGetRecentActivity<TData = Awaited<ReturnType<typeof getRecent
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetRecentActivityQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSubmitVerificationReportUrl = () => {
+
+
+
+
+  return `/api/verify/submit`
+}
+
+/**
+ * Records the plaintext report text for a verification request. Report text never touches the chain — only its keccak256 hash does, computed here the same way the agent computed it before calling requestVerification() on-chain (ethers `id(reportText)` / Solidity `keccak256(bytes(reportText))`). This never triggers on-chain scoring itself — a background worker picks up rows once both the report text and the on-chain request are present.
+
+ * @summary Submit report text + signature for a ReportVerification request
+ */
+export const submitVerificationReport = async (verificationSubmitInput: VerificationSubmitInput, options?: RequestInit): Promise<VerificationSubmitResponse> => {
+
+  return customFetch<VerificationSubmitResponse>(getSubmitVerificationReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      verificationSubmitInput,)
+  }
+);}
+
+
+
+
+export const getSubmitVerificationReportMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitVerificationReport>>, TError,{data: BodyType<VerificationSubmitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitVerificationReport>>, TError,{data: BodyType<VerificationSubmitInput>}, TContext> => {
+
+const mutationKey = ['submitVerificationReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitVerificationReport>>, {data: BodyType<VerificationSubmitInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitVerificationReport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitVerificationReportMutationResult = NonNullable<Awaited<ReturnType<typeof submitVerificationReport>>>
+    export type SubmitVerificationReportMutationBody = BodyType<VerificationSubmitInput>
+    export type SubmitVerificationReportMutationError = ErrorType<void>
+
+    /**
+ * @summary Submit report text + signature for a ReportVerification request
+ */
+export const useSubmitVerificationReport = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitVerificationReport>>, TError,{data: BodyType<VerificationSubmitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitVerificationReport>>,
+        TError,
+        {data: BodyType<VerificationSubmitInput>},
+        TContext
+      > => {
+      return useMutation(getSubmitVerificationReportMutationOptions(options));
+    }
+
+export const getGetVerificationCertificateUrl = (requestId: string,) => {
+
+
+
+
+  return `/api/verify/${requestId}`
+}
+
+/**
+ * @summary Get a verification certificate by on-chain request id
+ */
+export const getVerificationCertificate = async (requestId: string, options?: RequestInit): Promise<VerificationCertificate> => {
+
+  return customFetch<VerificationCertificate>(getGetVerificationCertificateUrl(requestId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVerificationCertificateQueryKey = (requestId: string,) => {
+    return [
+    `/api/verify/${requestId}`
+    ] as const;
+    }
+
+
+export const getGetVerificationCertificateQueryOptions = <TData = Awaited<ReturnType<typeof getVerificationCertificate>>, TError = ErrorType<void>>(requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVerificationCertificate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVerificationCertificateQueryKey(requestId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVerificationCertificate>>> = ({ signal }) => getVerificationCertificate(requestId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(requestId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVerificationCertificate>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVerificationCertificateQueryResult = NonNullable<Awaited<ReturnType<typeof getVerificationCertificate>>>
+export type GetVerificationCertificateQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a verification certificate by on-chain request id
+ */
+
+export function useGetVerificationCertificate<TData = Awaited<ReturnType<typeof getVerificationCertificate>>, TError = ErrorType<void>>(
+ requestId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVerificationCertificate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVerificationCertificateQueryOptions(requestId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetPlatformCashbackUrl = (address: string,) => {
+
+
+
+
+  return `/api/platforms/${address}/cashback`
+}
+
+/**
+ * @summary Get a platform/referrer address's claimable cashback balance
+ */
+export const getPlatformCashback = async (address: string, options?: RequestInit): Promise<PlatformCashback> => {
+
+  return customFetch<PlatformCashback>(getGetPlatformCashbackUrl(address),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPlatformCashbackQueryKey = (address: string,) => {
+    return [
+    `/api/platforms/${address}/cashback`
+    ] as const;
+    }
+
+
+export const getGetPlatformCashbackQueryOptions = <TData = Awaited<ReturnType<typeof getPlatformCashback>>, TError = ErrorType<void>>(address: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlatformCashback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPlatformCashbackQueryKey(address);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlatformCashback>>> = ({ signal }) => getPlatformCashback(address, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(address), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPlatformCashback>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPlatformCashbackQueryResult = NonNullable<Awaited<ReturnType<typeof getPlatformCashback>>>
+export type GetPlatformCashbackQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a platform/referrer address's claimable cashback balance
+ */
+
+export function useGetPlatformCashback<TData = Awaited<ReturnType<typeof getPlatformCashback>>, TError = ErrorType<void>>(
+ address: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlatformCashback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPlatformCashbackQueryOptions(address,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

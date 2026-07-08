@@ -131,6 +131,14 @@ The root `README.md` and `replit.md` had accumulated stale claims from an earlie
 2. **Etherscan verification** — needs `ETHERSCAN_API_KEY` secret, then run `pnpm --filter @workspace/contracts run verify:sepolia` (against the current live address).
 3. **Contract upgrades** — Staking, Governance, and PoU score tiers discussed as future versions.
 
+## ReportVerification (LIVE, standalone oracle contract)
+
+- **Address**: `0xA25D6ed371de357A4d4C0111AAaC1e199B575975` (Sepolia, chainId 11155111)
+- **Deployment block**: `11227959`
+- **Deployed via**: `contracts/scripts/deploy-report-verification-sepolia.ts` — reads the existing `ARZYG_ERC20_AI` address from `deployed.json` as a constructor arg only (plain IERC20), merges its own entry into `deployed.json`, and never touches/rewrites the `ARZYG_ERC20_AI` entry.
+- **Roles**: deployer/treasury/oracle/arbiter are all the same address here (`DEPLOYER_PRIVATE_KEY` and `AGENT_PRIVATE_KEY` resolve to the same wallet in this environment) — don't assume that's required, just what happened to be true this deploy.
+- **Local Hardhat deploy.ts** now also deploys ReportVerification (for unit/local testing) — **never run `deploy:local` in an environment whose `deployed.json` holds the live Sepolia record**, since both local and Sepolia deploy scripts write to the same `contracts/deployed.json` file. Running the local script clobbers the live Sepolia entries (had to `git show HEAD:contracts/deployed.json` to recover once). If local API-server integration testing is ever needed again, snapshot/restore `deployed.json` around the `deploy:local` run.
+
 ## Local Hardhat
 
 - MockFunctionsRouter: `0x5FbDB2315678afecb367f032d93F642f64180aa3`

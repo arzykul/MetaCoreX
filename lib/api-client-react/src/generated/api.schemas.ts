@@ -217,6 +217,78 @@ export interface OpenrouterError {
   error: string;
 }
 
+/**
+ * Declared intent only — the authoritative tier is whatever was passed to requestVerification() on-chain; the indexer overwrites this once the on-chain event is observed.
+
+ */
+export type VerificationSubmitInputTier = typeof VerificationSubmitInputTier[keyof typeof VerificationSubmitInputTier];
+
+
+export const VerificationSubmitInputTier = {
+  standard: 'standard',
+  premium: 'premium',
+} as const;
+
+export interface VerificationSubmitInput {
+  /** The wallet address that called requestVerification() on-chain (or will). */
+  agentAddress: string;
+  /**
+     * The plaintext report — never stored on-chain, only its hash.
+     * @minLength 1
+     */
+  reportText: string;
+  /** EIP-191 personal_sign signature over reportText, proving agentAddress authored it. */
+  signature: string;
+  /** Declared intent only — the authoritative tier is whatever was passed to requestVerification() on-chain; the indexer overwrites this once the on-chain event is observed.
+   */
+  tier: VerificationSubmitInputTier;
+}
+
+export type VerificationSubmitResponseStatus = typeof VerificationSubmitResponseStatus[keyof typeof VerificationSubmitResponseStatus];
+
+
+export const VerificationSubmitResponseStatus = {
+  awaiting_chain: 'awaiting_chain',
+  awaiting_text: 'awaiting_text',
+  ready_to_score: 'ready_to_score',
+  scoring: 'scoring',
+  posted: 'posted',
+  disputed: 'disputed',
+  finalized: 'finalized',
+  failed: 'failed',
+} as const;
+
+export interface VerificationSubmitResponse {
+  ok: boolean;
+  reportHash: string;
+  status: VerificationSubmitResponseStatus;
+  /** @nullable */
+  onchainRequestId?: string | null;
+  alreadyProcessed?: boolean;
+}
+
+export interface VerificationCertificate {
+  requestId: string;
+  agent: string;
+  reportHash: string;
+  /** 0 = standard, 1 = premium */
+  tier: number;
+  referrer: string;
+  /** Fee amount in ARZY-G (decimal string). */
+  fee: string;
+  score: number;
+  /** 0=None, 1=Requested, 2=Posted, 3=Disputed, 4=Finalized */
+  status: number;
+  requestedAt: string;
+  postedAt: string;
+}
+
+export interface PlatformCashback {
+  address: string;
+  /** Claimable cashback balance in ARZY-G (decimal string). Platforms withdraw it themselves on-chain via claimRewards(). */
+  claimableArzyg: string;
+}
+
 export type ListTasksParams = {
 status?: ListTasksStatus;
 priority?: ListTasksPriority;

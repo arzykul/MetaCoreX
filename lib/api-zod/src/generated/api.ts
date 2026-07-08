@@ -390,3 +390,61 @@ export const GetRecentActivityResponseItem = zod.object({
 export const GetRecentActivityResponse = zod.array(GetRecentActivityResponseItem)
 
 
+/**
+ * Records the plaintext report text for a verification request. Report text never touches the chain — only its keccak256 hash does, computed here the same way the agent computed it before calling requestVerification() on-chain (ethers `id(reportText)` / Solidity `keccak256(bytes(reportText))`). This never triggers on-chain scoring itself — a background worker picks up rows once both the report text and the on-chain request are present.
+
+ * @summary Submit report text + signature for a ReportVerification request
+ */
+
+
+
+export const SubmitVerificationReportBody = zod.object({
+  "agentAddress": zod.string().describe('The wallet address that called requestVerification() on-chain (or will).'),
+  "reportText": zod.string().min(1).describe('The plaintext report — never stored on-chain, only its hash.'),
+  "signature": zod.string().describe('EIP-191 personal_sign signature over reportText, proving agentAddress authored it.'),
+  "tier": zod.enum(['standard', 'premium']).describe('Declared intent only — the authoritative tier is whatever was passed to requestVerification() on-chain; the indexer overwrites this once the on-chain event is observed.\n')
+})
+
+export const SubmitVerificationReportResponse = zod.object({
+  "ok": zod.boolean(),
+  "reportHash": zod.string(),
+  "status": zod.enum(['awaiting_chain', 'awaiting_text', 'ready_to_score', 'scoring', 'posted', 'disputed', 'finalized', 'failed']),
+  "onchainRequestId": zod.string().nullish(),
+  "alreadyProcessed": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get a verification certificate by on-chain request id
+ */
+export const GetVerificationCertificateParams = zod.object({
+  "requestId": zod.coerce.string()
+})
+
+export const GetVerificationCertificateResponse = zod.object({
+  "requestId": zod.string(),
+  "agent": zod.string(),
+  "reportHash": zod.string(),
+  "tier": zod.number().describe('0 = standard, 1 = premium'),
+  "referrer": zod.string(),
+  "fee": zod.string().describe('Fee amount in ARZY-G (decimal string).'),
+  "score": zod.number(),
+  "status": zod.number().describe('0=None, 1=Requested, 2=Posted, 3=Disputed, 4=Finalized'),
+  "requestedAt": zod.string(),
+  "postedAt": zod.string()
+})
+
+
+/**
+ * @summary Get a platform/referrer address's claimable cashback balance
+ */
+export const GetPlatformCashbackParams = zod.object({
+  "address": zod.coerce.string()
+})
+
+export const GetPlatformCashbackResponse = zod.object({
+  "address": zod.string(),
+  "claimableArzyg": zod.string().describe('Claimable cashback balance in ARZY-G (decimal string). Platforms withdraw it themselves on-chain via claimRewards().')
+})
+
+

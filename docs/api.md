@@ -4,7 +4,7 @@ Base URL: `/api` (e.g. `https://your-deployment.example.com/api` or `http://loca
 
 All responses are JSON. Endpoints that mutate state return `{ "ok": true, ... }` on success and `{ "ok": false, "error": "..." }` on failure (with a non-2xx status code), unless noted otherwise.
 
-> The machine-readable contract for the "personal assistant" style routes (`tasks`, `notes`, `reminders`, `chat`, `stats`, `openrouter`) lives in [`lib/api-spec/openapi.yaml`](../lib/api-spec/openapi.yaml) and is the source of truth used to generate Zod schemas + React Query hooks. The routes below (`health`, `contract`, `agents`, `agent-tasks`, `pou`, `events`) are hand-written Express routes specific to the ARZY-G on-chain layer.
+> The machine-readable contract for the "personal assistant" style routes (`tasks`, `notes`, `reminders`, `chat`, `stats`, `openrouter`) plus the `verify`/`platforms` routes lives in [`lib/api-spec/openapi.yaml`](../lib/api-spec/openapi.yaml) and is the source of truth used to generate Zod schemas + React Query hooks. The routes below (`health`, `contract`, `agents`, `agent-tasks`, `pou`, `events`) are hand-written Express routes specific to the ARZY-G on-chain layer.
 
 ## Health
 
@@ -66,6 +66,16 @@ Read-only aggregate views over `agent_proofs`, which a background indexer keeps 
 | `GET` | `/api/pou/agents/:address` | Full profile: avg score, streak, radar dimensions, task category breakdown, derived achievements. |
 | `GET` | `/api/pou/agents/:address/proofs?limit=&offset=` | Paginated raw proof history for an agent. |
 | `POST` | `/api/pou/submit` | Body: `{ agentAddress, proof, signature }`. Backs the Dashboard's "Submit Proof of Use" tab. `signature` is an EIP-191 `personal_sign` signature (over the exact `proof` text) produced client-side by the connected wallet — it proves authorization without the private key ever reaching the server. `proof` is scored server-side by the same AI validator as `/agent-tasks/complete`; the mint amount is fixed, never client-supplied, and only a passing score triggers a mint from the server's validator wallet. Rate-limited to 5 submission attempts per address per rolling 24h. |
+
+## Report verification (ReportVerification oracle)
+
+Backed by the standalone `ReportVerification` contract (see [economics.md](./economics.md) for the full fee/cashback/dispute model) — fully independent from the ARZY-G token contract. Request/response shapes are defined in [`lib/api-spec/openapi.yaml`](../lib/api-spec/openapi.yaml) (`verify`/`platforms` tags) and generated into Zod schemas + React Query hooks, same as the personal-assistant routes.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/verify/submit` | Body: `{ agentAddress, reportText, signature, tier }`. Records the plaintext report text for a verification request; `reportText` never touches the chain, only `keccak256(reportText)` does (computed identically here and by the agent before calling `requestVerification()` on-chain). `signature` is an EIP-191 `personal_sign` signature over the exact `reportText`, proving authorship. `tier` is a declared intent only — the authoritative tier is whatever the agent actually passed on-chain; a background indexer overwrites it once the `VerificationRequested` event is observed. This endpoint never triggers scoring itself — a background worker (`verificationScorer.ts`) picks up rows once both halves (report text + on-chain request) are present, and is the only code path allowed to call `recordVerification`. |
+| `GET` | `/api/verify/:requestId` | Public certificate lookup, read live from the contract's `getCertificate()`. `404` if the request doesn't exist on-chain yet. |
+| `GET` | `/api/platforms/:address/cashback` | A referrer/platform address's current claimable cashback balance (`claimableCashback` on-chain), in ARZY-G. Read-only — platforms withdraw it themselves on-chain via `claimRewards()`; the server never relays or signs a withdrawal. |
 
 ## Events / WebSocket
 

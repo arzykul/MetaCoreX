@@ -5,6 +5,8 @@ import { logger } from "./lib/logger.js";
 import { mcxEventBus } from "./ws/eventBus.js";
 import { contractService } from "./services/contractService.js";
 import { proofIndexer } from "./services/proofIndexer.js";
+import { verificationIndexer } from "./services/verificationIndexer.js";
+import { verificationScorer } from "./services/verificationScorer.js";
 import { seedAgentTasksIfEmpty } from "./lib/seedAgentTasks.js";
 
 const rawPort = process.env["PORT"];
@@ -60,6 +62,16 @@ server.listen(port, () => {
   // Start PoU proof indexer (non-blocking — waits for chain connection, then backfills + polls)
   proofIndexer.start().catch((err) => {
     logger.warn({ err }, "proofIndexer start error");
+  });
+
+  // Start ReportVerification indexer + scoring worker (non-blocking — each
+  // waits for chain connection independently, then backfills + polls)
+  verificationIndexer.start().catch((err) => {
+    logger.warn({ err }, "verificationIndexer start error");
+  });
+
+  verificationScorer.start().catch((err) => {
+    logger.warn({ err }, "verificationScorer start error");
   });
 
   // Seed demo agent tasks once (non-blocking)

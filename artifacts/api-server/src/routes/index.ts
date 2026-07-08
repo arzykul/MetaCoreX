@@ -11,6 +11,8 @@ import remindersRouter from "./reminders.js";
 import chatRouter from "./chat.js";
 import statsRouter from "./stats.js";
 import openrouterRouter from "./openrouter/index.js";
+import verifyRouter from "./verify.js";
+import platformsRouter from "./platforms.js";
 
 const router: IRouter = Router();
 
@@ -26,5 +28,7 @@ router.use(remindersRouter);
 router.use(chatRouter);
 router.use(statsRouter);
 router.use(openrouterRouter);
+router.use(verifyRouter);
+router.use(platformsRouter);
 
 export default router;
