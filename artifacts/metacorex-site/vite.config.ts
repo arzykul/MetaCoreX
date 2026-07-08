@@ -4,13 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+// Defaults to "/" (root) when unset — e.g. Render Static Site builds that
+// haven't set BASE_PATH explicitly. Replit's own workflow always sets it
+// (see artifact.toml), so this only changes behavior for other hosts.
+const basePath = process.env.BASE_PATH || "/";
 
 // PORT only matters for `vite`/`vite preview` (serve modes) — a plain
 // `vite build` (e.g. Render Static Site's build step) has no server to bind
