@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Network, Coins, HandCoins, Code2, Link as LinkIcon, Building2 } from "lucide-react";
+import { Search, Network, Coins, HandCoins, Code2, Link as LinkIcon, Building2, ShieldCheck } from "lucide-react";
 import { useGetPlatformCashback, getGetPlatformCashbackQueryKey } from "@workspace/api-client-react";
 
 export default function ForPlatforms() {
@@ -43,6 +43,15 @@ export default function ForPlatforms() {
           <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
             Integrate MetaCoreX Report Verification into your platform and earn a 10% on-chain referral cashback for every verification fee your users pay.
           </p>
+          <a
+            href="https://sepolia.etherscan.io/address/0xA25D6ed371de357A4d4C0111AAaC1e199B575975#code"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 mt-6 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            Contract source verified on Etherscan
+          </a>
         </section>
 
         {/* Economics Section */}

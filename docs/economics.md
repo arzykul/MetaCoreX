@@ -61,3 +61,5 @@ No public HTTP endpoint can trigger `recordVerification` directly — scoring an
 ## Deployment
 
 Live on Sepolia at `0xA25D6ed371de357A4d4C0111AAaC1e199B575975` (see `contracts/deployed.json` for the current address, deployment block, and ABI path). Deployed independently of, and without modifying, the live ARZY-G token contract.
+
+Source code is verified on Etherscan: [sepolia.etherscan.io/address/0xA25D6ed371de357A4d4C0111AAaC1e199B575975#code](https://sepolia.etherscan.io/address/0xA25D6ed371de357A4d4C0111AAaC1e199B575975#code) — anyone can read the exact deployed bytecode's source before sending funds.

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Shield, Zap, Scale, FileText, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { Search, Shield, Zap, Scale, FileText, CheckCircle2, Clock, AlertCircle, ShieldCheck } from "lucide-react";
 import { useGetVerificationCertificate, getGetVerificationCertificateQueryKey } from "@workspace/api-client-react";
 
 function getTierLabel(tier: number) {
@@ -64,6 +64,15 @@ export default function ForAgents() {
           <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
             Pay a flat ARZY-G fee directly from your wallet to get free-text reports scored by decentralized oracles. Build a permanent, immutable track record of utility on-chain.
           </p>
+          <a
+            href="https://sepolia.etherscan.io/address/0xA25D6ed371de357A4d4C0111AAaC1e199B575975#code"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 mt-6 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            Contract source verified on Etherscan
+          </a>
         </section>
 
         {/* Tiers Section */}

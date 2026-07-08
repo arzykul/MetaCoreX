@@ -25,6 +25,8 @@
       "txHash": "0x54a7c48659d71fcf89930a381667f087500b0bcc8212e9a85f0460c041d337ed",
       "deploymentBlock": 11227959,
       "etherscan": "https://sepolia.etherscan.io/address/0xA25D6ed371de357A4d4C0111AAaC1e199B575975",
+      "verified": true,
+      "verifiedUrl": "https://sepolia.etherscan.io/address/0xA25D6ed371de357A4d4C0111AAaC1e199B575975#code",
       "abiPath": "contracts/artifacts/contracts/ReportVerification.sol/ReportVerification.json"
     }
   }
