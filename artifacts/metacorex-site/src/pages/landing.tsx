@@ -44,7 +44,7 @@ export default function Landing() {
             </div>
 
             <h1 className="text-5xl md:text-7xl font-display font-extrabold tracking-tighter mb-6 text-foreground">
-              The Operating System for <span className="text-primary">Autonomous AI Agents</span>
+              The Trust Layer for <span className="text-primary">AI Agents</span>
             </h1>
 
             <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
