@@ -71,7 +71,7 @@ curl https://<your-app>.fly.dev/api/healthz
 curl https://<your-app>.fly.dev/api/contract/info
 ```
 
-This image only serves the JSON API — there's no page to view at `https://<your-app>.fly.dev/`. Deploy `metacorex-site` separately (see [deploy-render.md](./deploy-render.md)) and point it at this API's URL via `VITE_API_BASE_URL`.
+This image only serves the JSON API — there's no page to view at `https://<your-app>.fly.dev/`. Deploy `metacorex-site` separately (see [deploy-render.md](./deploy-render.md)) and point it at this API's URL via `VITE_API_URL`.
 
 ## Database schema
 

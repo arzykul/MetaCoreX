@@ -1,23 +1,34 @@
 # Render Blueprint for MetaCoreX — https://render.com/docs/blueprint-spec
 #
 # Defines the two services needed to host MetaCoreX entirely on Render:
-#   1. metacorex-api    — the Express API server (Docker, reuses the repo's
-#                          existing Dockerfile unchanged).
-#   2. metacorex-site   — the marketing/dashboard frontend (Static Site).
+#   1. metacorex-backend  — the Express API server (Docker, reuses the
+#                            repo's existing Dockerfile unchanged).
+#   2. metacorex-frontend — the marketing/dashboard frontend (Static Site).
+#
+# Both services build from this pnpm workspace, not npm: the frontend and
+# backend each depend on other workspace packages via the `workspace:*`
+# protocol (e.g. @workspace/api-client-react, @workspace/db), which only
+# pnpm understands — a plain `npm install` in either artifact's own
+# directory cannot resolve those and will fail. The backend also stays a
+# Docker service (rather than Render's native Node runtime) because
+# contractService.ts resolves the workspace root at runtime as
+# `resolve(cwd, "..", "..")` to find contracts/deployed.json and
+# contracts/artifacts — the Dockerfile's runtime stage mirrors that exact
+# directory depth; see the Dockerfile's own header comment for details.
 #
 # This is a best-effort Blueprint meant to save you clicks in the Render
 # dashboard, not a guarantee that every field maps 1:1 to Render's current
 # UI — double-check service settings after import. See docs/deploy-render.md
 # for the full walkthrough, required secrets, and known gotchas (in
-# particular the VITE_API_BASE_URL chicken-and-egg ordering).
+# particular the VITE_API_URL chicken-and-egg ordering).
 
 services:
   - type: web
-    name: metacorex-api
+    name: metacorex-backend
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    plan: starter
+    plan: starter # paid tier — does not spin down, needed for the WS event bus + background indexer
     healthCheckPath: /api/healthz
     envVars:
       - key: NODE_ENV
@@ -30,6 +41,11 @@ services:
         value: "8080"
       - key: DATABASE_URL
         sync: false
+      # Preferred RPC var — contractService.ts reads SEPOLIA_RPC_URL first,
+      # then falls back to ETH_RPC_URL, then to deployed.json's own rpcUrl.
+      # There is no CONTRACT_ADDRESS env var: the deployed contract address
+      # comes from contracts/deployed.json (baked in at deploy/build time),
+      # not from an environment variable.
       - key: SEPOLIA_RPC_URL
         sync: false
       - key: AGENT_PRIVATE_KEY
@@ -40,16 +56,18 @@ services:
         sync: false
 
   - type: web
-    name: metacorex-site
+    name: metacorex-frontend
     runtime: static
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @workspace/metacorex-site run build
     staticPublishPath: artifacts/metacorex-site/dist/public
     envVars:
       - key: BASE_PATH
         value: /
-      # Fill in after metacorex-api is deployed and has a Render URL — see
-      # docs/deploy-render.md, "Deployment order" section.
-      - key: VITE_API_BASE_URL
+      # Fill in after metacorex-backend is deployed and has a Render URL —
+      # see docs/deploy-render.md, "Deployment order" section. This is a
+      # vite build-time substitution, so it must be set before the build,
+      # not read at runtime.
+      - key: VITE_API_URL
         sync: false
     routes:
       - type: rewrite

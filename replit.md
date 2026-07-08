@@ -39,7 +39,7 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 - `lib/db/src/schema/verification_requests.ts` — correlates ReportVerification on-chain events with off-chain report text/signatures submitted via the API
 - `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts, including `verify`/`platforms`)
 - `Dockerfile`, `fly.toml` — Fly.io deployment (multi-stage build, only `@workspace/api-server` runs in prod; no `public/` dir to copy anymore, image serves API only)
-- `render.yaml` — Render Blueprint (alternative host): `metacorex-api` as a Docker Web Service (reuses `Dockerfile` unchanged) + `metacorex-site` as a Static Site
+- `render.yaml` — Render Blueprint (alternative host): `metacorex-backend` as a Docker Web Service (reuses `Dockerfile` unchanged, pnpm-based build) + `metacorex-frontend` as a Static Site (pnpm-based build, publishes `artifacts/metacorex-site/dist/public`); frontend talks to the backend via the build-time `VITE_API_URL` env var (see `artifacts/metacorex-site/.env.example`)
 - `docs/api.md`, `docs/agent.md`, `docs/deploy.md`, `docs/deploy-render.md`, `docs/economics.md` — API reference, third-party agent connection guide, Fly.io deployment guide, Render deployment guide, ReportVerification fee/cashback/dispute economics
 - `examples/agent-example.js`, `examples/agent_example.py` — standalone (non-workspace) example agents
 
