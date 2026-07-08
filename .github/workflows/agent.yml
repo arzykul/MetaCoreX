@@ -7,17 +7,27 @@ name: MetaCoreX Agent
 # on-chain with your own wallet. It never sends your private key to the
 # MetaCoreX API.
 #
-# To connect your own agent:
+# To activate this agent:
 #   1. Fork this repository. (This workflow relies on the full pnpm workspace
 #      to run scripts/src/github-agent.ts — copying just these two files into
 #      an unrelated repo will NOT work on its own.)
-#   2. In your fork's Settings -> Secrets and variables -> Actions, add:
+#   2. In your fork's Settings -> Secrets and variables -> Actions, add ONE
+#      required secret:
 #        AGENT_PRIVATE_KEY  - your agent wallet's private key
-#        SEPOLIA_RPC_URL    - a Sepolia RPC endpoint (Alchemy/Infura/public)
+#      Everything else has working defaults (see the env: block below).
 #   3. Fund your agent wallet with a small amount of Sepolia ETH for gas
-#      (e.g. from a public Sepolia faucet).
-#   4. Enable Actions on your fork. The workflow below runs on a schedule
-#      and can also be triggered manually.
+#      (e.g. from a public Sepolia faucet: https://sepoliafaucet.com).
+#   4. Enable Actions on your fork. The workflow runs on a schedule and can
+#      also be triggered manually via the Actions tab.
+#
+# Optional overrides (repo variables or secrets):
+#   SEPOLIA_RPC_URL    - Sepolia JSON-RPC endpoint (defaults to a free
+#                        public node — override if you prefer Alchemy/Infura)
+#   API_BASE_URL       - MetaCoreX API base URL (defaults to the live
+#                        production backend — only change for forks with their
+#                        own deployed API)
+#   AGENT_NAME         - display name used on first registration
+#   AGENT_DESCRIPTION  - description used on first registration
 
 on:
   schedule:
@@ -27,6 +37,13 @@ on:
 jobs:
   run-agent:
     runs-on: ubuntu-latest
+    env:
+      # Free public Sepolia RPC — no API key required.
+      # Override by adding a SEPOLIA_RPC_URL secret/variable in your repo.
+      SEPOLIA_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL || vars.SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com' }}
+      # Live MetaCoreX production API.
+      # Override by adding an API_BASE_URL variable if you run your own backend.
+      API_BASE_URL: ${{ vars.API_BASE_URL || 'https://metacorex-backend.onrender.com' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -40,12 +57,30 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check for AGENT_PRIVATE_KEY
+        id: check-key
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning title=Setup required::AGENT_PRIVATE_KEY is not set — agent will not run."
+            echo ""
+            echo "To enable this agent add your Sepolia wallet private key as a secret:"
+            echo "  Repository Settings → Secrets and variables → Actions → New repository secret"
+            echo "  Name:  AGENT_PRIVATE_KEY"
+            echo "  Value: <your wallet private key>"
+            echo ""
+            echo "Get free Sepolia ETH for gas at https://sepoliafaucet.com"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          KEY: ${{ secrets.AGENT_PRIVATE_KEY }}
+
       - name: Run agent
+        if: steps.check-key.outputs.skip != 'true'
         working-directory: scripts
         env:
           AGENT_PRIVATE_KEY: ${{ secrets.AGENT_PRIVATE_KEY }}
-          SEPOLIA_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
-          API_BASE_URL: ${{ vars.API_BASE_URL }}
-          AGENT_NAME: ${{ vars.AGENT_NAME }}
-          AGENT_DESCRIPTION: ${{ vars.AGENT_DESCRIPTION }}
+          AGENT_NAME: ${{ vars.AGENT_NAME || 'MetaCoreX Agent' }}
+          AGENT_DESCRIPTION: ${{ vars.AGENT_DESCRIPTION || 'Agent connected via GitHub Actions' }}
         run: pnpm run agent:github
