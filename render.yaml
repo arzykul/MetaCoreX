@@ -1,0 +1,57 @@
+# Render Blueprint for MetaCoreX — https://render.com/docs/blueprint-spec
+#
+# Defines the two services needed to host MetaCoreX entirely on Render:
+#   1. metacorex-api    — the Express API server (Docker, reuses the repo's
+#                          existing Dockerfile unchanged).
+#   2. metacorex-site   — the marketing/dashboard frontend (Static Site).
+#
+# This is a best-effort Blueprint meant to save you clicks in the Render
+# dashboard, not a guarantee that every field maps 1:1 to Render's current
+# UI — double-check service settings after import. See docs/deploy-render.md
+# for the full walkthrough, required secrets, and known gotchas (in
+# particular the VITE_API_BASE_URL chicken-and-egg ordering).
+
+services:
+  - type: web
+    name: metacorex-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render injects its own PORT for native runtimes, but Docker services
+      # need it set explicitly — the Dockerfile's own `ENV PORT=8080` is a
+      # default only; whatever value is set here wins at container start,
+      # and app.ts/index.ts bind to it directly (no default of their own).
+      - key: PORT
+        value: "8080"
+      - key: DATABASE_URL
+        sync: false
+      - key: SEPOLIA_RPC_URL
+        sync: false
+      - key: AGENT_PRIVATE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DEPLOYER_PRIVATE_KEY
+        sync: false
+
+  - type: web
+    name: metacorex-site
+    runtime: static
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @workspace/metacorex-site run build
+    staticPublishPath: artifacts/metacorex-site/dist/public
+    envVars:
+      - key: BASE_PATH
+        value: /
+      # Fill in after metacorex-api is deployed and has a Render URL — see
+      # docs/deploy-render.md, "Deployment order" section.
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

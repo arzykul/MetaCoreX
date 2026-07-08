@@ -36,7 +36,8 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 - `lib/pou-validator/` — shared PoU (Proof of Usefulness) validation package: strict pre-Gemini spam/length checks + the single Gemini-scoring call. Used by the API server (`pouMintService.ts`) and `scripts/src/validator-agent.ts` — no other code path may score a submission.
 - `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts)
 - `Dockerfile`, `fly.toml` — Fly.io deployment (multi-stage build, only `@workspace/api-server` runs in prod)
-- `docs/api.md`, `docs/agent.md`, `docs/deploy.md` — API reference, third-party agent connection guide, deployment guide
+- `render.yaml` — Render Blueprint (alternative host): `metacorex-api` as a Docker Web Service (reuses `Dockerfile` unchanged) + `metacorex-site` as a Static Site
+- `docs/api.md`, `docs/agent.md`, `docs/deploy.md`, `docs/deploy-render.md` — API reference, third-party agent connection guide, Fly.io deployment guide, Render deployment guide
 - `examples/agent-example.js`, `examples/agent_example.py` — standalone (non-workspace) example agents
 
 ## Architecture decisions

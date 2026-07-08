@@ -22,7 +22,20 @@ export interface McxEvent {
   timestamp: number;
 }
 
+// Same-origin by default (matches Replit's shared proxy — see
+// artifact.toml). For a split deployment (Render Static Site + a separate
+// Render Web Service for the API), set VITE_API_BASE_URL to the API
+// server's full origin (e.g. "https://metacorex-api.onrender.com") at build
+// time and the WebSocket connects there instead. Browsers don't enforce
+// same-origin/CORS restrictions on WebSocket connections.
 function wsUrl(): string {
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "");
+
+  if (apiBase) {
+    const wsBase = apiBase.replace(/^http/, "ws");
+    return `${wsBase}/api/ws`;
+  }
+
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}/api/ws`;
 }

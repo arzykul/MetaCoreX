@@ -4,9 +4,17 @@
 // call these functions directly with @tanstack/react-query's useQuery /
 // useMutation in components.
 //
-// All paths are root-relative ("/api/...") because the API server owns the
-// global "/api" prefix across the whole workspace (see artifact.toml), not
-// this artifact's own base path.
+// Paths are written as root-relative ("/api/...") and prefixed with
+// API_BASE below. On Replit (and any single-origin deploy where the API
+// server owns the global "/api" prefix — see artifact.toml) VITE_API_BASE_URL
+// is unset, API_BASE is "", and requests stay same-origin exactly as before.
+// For a split deployment (e.g. Render Static Site + a separate Render Web
+// Service for the API) set VITE_API_BASE_URL to the API server's full origin
+// (e.g. "https://metacorex-api.onrender.com") at build time.
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(
+  /\/+$/,
+  "",
+);
 
 export interface TokenInfo {
   connected: boolean;
@@ -52,7 +60,7 @@ export class ApiError extends Error {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
