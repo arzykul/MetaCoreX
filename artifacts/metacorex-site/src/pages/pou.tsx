@@ -40,7 +40,7 @@ import {
   YAxis,
 } from "recharts";
 import { format } from "date-fns";
-import { Activity, Coins, Gauge, TrendingDown, TrendingUp, Users, Zap } from "lucide-react";
+import { Activity, Coins, Gauge, Radio, TrendingDown, TrendingUp, Users, Zap } from "lucide-react";
 
 const RANGE_OPTIONS: { value: PouRange; label: string }[] = [
   { value: "24h", label: "24 hours" },
@@ -406,6 +406,13 @@ export default function Pou() {
             testId="stat-velocity"
           />
         </div>
+
+        {!overviewLoading && (overview?.totalUsefulWork ?? 0) === 0 && (
+          <div className="mb-6 flex items-center gap-3 rounded-lg border border-dashed border-amber-400/40 bg-amber-400/5 px-4 py-3 text-sm text-muted-foreground">
+            <Radio className="w-4 h-4 shrink-0 text-amber-400 animate-pulse" />
+            No data yet — network is warming up. Stats will appear as agents submit proofs on-chain.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
           <div className="xl:col-span-2">

@@ -25,24 +25,32 @@ class ProofIndexer {
   async start(): Promise<void> {
     await this._waitForChainConnection();
 
-    const anchor = contractService.deploymentBlock;
-    if (anchor == null) {
-      logger.warn("proofIndexer: no deploymentBlock known — cannot anchor backfill, skipping start");
+    // Start the cursor at the CURRENT block — no archive scan, no 403
+    // "requires personal token" errors. Historical proofs are not backfilled;
+    // data accumulates going forward from this point.
+    // To do a full historical rescan, set FORCE_RESYNC=true (see below).
+    const currentBlock = await contractService.getCurrentBlockNumber();
+    if (currentBlock == null) {
+      logger.warn("proofIndexer: could not read current block — skipping start");
       return;
     }
 
-    await this._ensureCursor(anchor);
+    await this._ensureCursor(currentBlock);
 
-    // FORCE_RESYNC=true resets the cursor to the deployment block so the next
-    // sync re-scans all on-chain events from scratch and re-populates the DB.
+    // FORCE_RESYNC=true resets the cursor to the deployment block for a full
+    // historical backfill. Requires an archive-capable RPC (e.g. Alchemy paid
+    // tier). After resyncing, remove FORCE_RESYNC to avoid re-running on every
+    // restart.
     if (process.env.FORCE_RESYNC === "true") {
-      logger.info({ anchorBlock: anchor }, "proofIndexer: FORCE_RESYNC — resetting cursor to deployment block");
+      const anchor = contractService.deploymentBlock;
+      const resetTo = anchor != null ? anchor - 1 : currentBlock - 1;
+      logger.info({ resetTo }, "proofIndexer: FORCE_RESYNC — resetting cursor");
       await db
         .insert(indexerStateTable)
-        .values({ id: INDEXER_ID, lastScannedBlock: anchor - 1 })
+        .values({ id: INDEXER_ID, lastScannedBlock: resetTo })
         .onConflictDoUpdate({
           target: indexerStateTable.id,
-          set: { lastScannedBlock: anchor - 1 },
+          set: { lastScannedBlock: resetTo },
         });
     }
 
@@ -52,7 +60,7 @@ class ProofIndexer {
       this._sync().catch((err) => logger.warn({ err }, "proofIndexer: periodic sync failed"));
     }, POLL_INTERVAL_MS);
 
-    logger.info("proofIndexer: started (backfill complete, polling every 20s)");
+    logger.info("proofIndexer: started (new events only, polling every 20s)");
   }
 
   private async _waitForChainConnection(): Promise<void> {
