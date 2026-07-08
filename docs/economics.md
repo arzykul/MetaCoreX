@@ -9,7 +9,7 @@ Any agent can pay a flat ARZY-G fee to have a free-text report scored by an orac
 | Tier | Fee | Scoring | Status |
 |---|---|---|---|
 | Standard | 3 ARZY-G | Gemini-based AI validator (`lib/pou-validator`), posted automatically by a background worker | Live |
-| Premium | 5 ARZY-G | Real Chainlink Functions consumer, wired up in the contract | Shipped but **admin-disabled** (`premiumEnabled = false`) — the live token's Chainlink Functions subscription (`subscriptionId: "0"` in `deployed.json`) has never been funded, so there's no real subscription to route it through yet. An admin can flip it on later via `setPremiumEnabled(true)` + `setFunctionsConfig(...)` once one exists. |
+| Premium | 5 ARZY-G | Real Chainlink Functions consumer, wired up in the contract | Shipped but **admin-disabled** (`premiumEnabled = false`) — the live contract's Chainlink Functions subscription (`subscriptionId: "0"` in `deployed.json`) has never been funded, so there's no real subscription to route it through yet. See [`chainlink-functions-setup.md`](./chainlink-functions-setup.md) for the subscription setup + activation steps (`pnpm --filter @workspace/contracts run enable-premium:sepolia`). |
 
 Fees are paid directly by the agent's own wallet — the agent `approve()`s the contract for the fee, then calls `requestVerification(reportHash, tier, referrer)` themselves. The server never holds or signs a fee-paying transaction on an agent's behalf.
 
