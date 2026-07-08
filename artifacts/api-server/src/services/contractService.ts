@@ -88,6 +88,7 @@ export interface TokenInfo {
 }
 
 const RETRY_MS = 10_000;
+const MAX_RETRY_MS = 60_000;
 
 // process.cwd() when the server runs = artifacts/api-server/
 // workspace root = two levels up
@@ -108,6 +109,11 @@ class ContractService {
   private deployed:    DeployedInfo    | null = null;
   private _connected = false;
   private _retryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Tracks consecutive rate-limit failures so reconnect backs off instead of
+  // hammering an already-throttled provider every RETRY_MS forever — reset
+  // to 0 as soon as a connect attempt succeeds or fails for a non-rate-limit
+  // reason.
+  private _consecutiveRateLimitFailures = 0;
 
   // Agent registry cache — avoids re-scanning from block 0 on every
   // listAgents() call, which blows past free-tier eth_getLogs block-range
@@ -782,7 +788,8 @@ class ContractService {
   /** Read-only certificate lookup — used by GET /verify/:requestId. */
   async getVerificationCertificate(requestId: bigint): Promise<VerificationCertificate | null> {
     if (!this.reportVerification) return null;
-    const result = await this.reportVerification.getCertificate(requestId);
+    const rv = this.reportVerification;
+    const result = await this._callWithRetry(() => rv.getCertificate(requestId));
     return {
       requestId: requestId.toString(),
       agent: (result.agent as string).toLowerCase(),
@@ -800,8 +807,35 @@ class ContractService {
   /** Read-only claimable cashback balance for a referrer/platform address. */
   async getClaimableCashback(address: string): Promise<string | null> {
     if (!this.reportVerification) return null;
-    const amount = await this.reportVerification.claimableCashback(address);
+    const rv = this.reportVerification;
+    const amount = await this._callWithRetry(() => rv.claimableCashback(address));
     return ethers.formatEther(amount as bigint);
+  }
+
+  /**
+   * Retries a single read-only RPC call on transient rate-limit errors
+   * (e.g. Alchemy free-tier "exceeded compute units per second" 429s), with
+   * the same exponential backoff used by _queryFilterAdaptive. Unlike that
+   * method, there's no block range to bisect here — a single call either
+   * eventually succeeds or, after RATE_LIMIT_MAX_RETRIES, rejects normally
+   * so the caller/route can surface a real error instead of hanging.
+   */
+  private async _callWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+    for (let attempt = 0; attempt <= ContractService.RATE_LIMIT_MAX_RETRIES; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (ContractService.isRateLimitError(err) && attempt < ContractService.RATE_LIMIT_MAX_RETRIES) {
+          const backoffMs = 400 * 2 ** attempt;
+          logger.warn({ err, attempt, backoffMs }, "contractService: rate-limited RPC call, retrying");
+          await new Promise((r) => setTimeout(r, backoffMs));
+          continue;
+        }
+        throw err;
+      }
+    }
+    // Unreachable — the loop above always either returns or throws.
+    throw new Error("_callWithRetry: exhausted retries without resolving");
   }
 
   // ── Connection lifecycle ────────────────────────────────────────────────────
@@ -921,11 +955,20 @@ class ContractService {
       });
 
       this._subscribeEvents();
+      this._consecutiveRateLimitFailures = 0;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.info({ msg }, "contractService: node not ready — retrying");
+      if (ContractService.isRateLimitError(err)) {
+        this._consecutiveRateLimitFailures += 1;
+        logger.info(
+          { msg, consecutiveFailures: this._consecutiveRateLimitFailures },
+          "contractService: RPC provider rate-limited during connect — backing off and retrying"
+        );
+      } else {
+        this._consecutiveRateLimitFailures = 0;
+        logger.info({ msg }, "contractService: node not ready — retrying");
+      }
       this._handleDisconnect();
-      this._scheduleRetry();
     }
   }
 
@@ -990,6 +1033,18 @@ class ContractService {
     logger.info("contractService: event listeners active");
   }
 
+  /**
+   * Tears down the connection and, critically, ALWAYS re-arms the reconnect
+   * timer — this is the single place every disconnect path (initial connect
+   * failure, or a transient RPC error surfaced mid-session e.g. by
+   * getTokenInfo) funnels through. Previously only _tryConnect's own catch
+   * scheduled a retry; getTokenInfo called this method directly without
+   * scheduling one, so a single transient 429 there would tear down the
+   * ReportVerification connection (and everything else) and leave it dead
+   * until the process was restarted, since nothing else would ever call
+   * _tryConnect again. Centralizing it here means every caller gets
+   * automatic recovery for free.
+   */
   private _handleDisconnect(): void {
     if (this.token) this.token.removeAllListeners().catch(() => {});
     if (this.reportVerification) this.reportVerification.removeAllListeners().catch(() => {});
@@ -1002,10 +1057,15 @@ class ContractService {
     this.agentAddressCache = new Set();
     this.agentScanBlock = 0;
     this.agentScanInFlight = null;
+    this._scheduleRetry();
   }
 
   private _scheduleRetry(): void {
-    this._retryTimer = setTimeout(() => this._tryConnect(), RETRY_MS);
+    const delay =
+      this._consecutiveRateLimitFailures > 0
+        ? Math.min(RETRY_MS * 2 ** this._consecutiveRateLimitFailures, MAX_RETRY_MS)
+        : RETRY_MS;
+    this._retryTimer = setTimeout(() => this._tryConnect(), delay);
   }
 }
 
