@@ -34,6 +34,20 @@ class VerificationIndexer {
     }
 
     await this._ensureCursor(anchor);
+
+    // FORCE_RESYNC=true resets the cursor to the deployment block so the next
+    // sync re-scans all on-chain events from scratch and re-populates the DB.
+    if (process.env.FORCE_RESYNC === "true") {
+      logger.info({ anchorBlock: anchor }, "verificationIndexer: FORCE_RESYNC — resetting cursor to deployment block");
+      await db
+        .insert(indexerStateTable)
+        .values({ id: INDEXER_ID, lastScannedBlock: anchor - 1 })
+        .onConflictDoUpdate({
+          target: indexerStateTable.id,
+          set: { lastScannedBlock: anchor - 1 },
+        });
+    }
+
     await this._sync();
 
     this.pollTimer = setInterval(() => {

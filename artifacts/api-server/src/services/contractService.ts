@@ -115,6 +115,26 @@ class ContractService {
   // reason.
   private _consecutiveRateLimitFailures = 0;
 
+  // RPC failover — on persistent 429 / 403 errors we rotate through a list of
+  // candidate URLs (primary env var first, then public fallbacks) so a single
+  // saturated provider doesn't kill indexing. The list is built once after the
+  // first successful read of deployed.json and persists across reconnects.
+  private static readonly SEPOLIA_RPC_FALLBACKS: readonly string[] = [
+    "https://ethereum-sepolia-rpc.publicnode.com",
+    "https://rpc.sepolia.org",
+    "https://sepolia.drpc.org",
+  ];
+  private _rpcCandidates: string[] = [];
+  private _rpcIndex = 0;
+
+  // Event poller — replaces ethers contract.on() subscriptions which create
+  // eth_newFilter + poll via eth_getFilterChanges on every tick (very expensive
+  // on Alchemy free tier). Instead, queries new blocks with eth_getLogs every
+  // EVENT_POLL_INTERVAL_MS and fans results out to the WS event bus.
+  private static readonly EVENT_POLL_INTERVAL_MS = 30_000;
+  private _eventPollTimer: ReturnType<typeof setInterval> | null = null;
+  private _eventPollBlock = 0;
+
   // Agent registry cache — avoids re-scanning from block 0 on every
   // listAgents() call, which blows past free-tier eth_getLogs block-range
   // limits (e.g. Alchemy free tier caps ranges at ~10 blocks). We anchor the
@@ -527,19 +547,31 @@ class ContractService {
 
   private static isRateLimitError(err: unknown): boolean {
     const message = err instanceof Error ? err.message : String(err);
-    return message.includes("429") || /compute units/i.test(message);
+    return (
+      message.includes("429") ||
+      message.includes("403") ||
+      /compute units/i.test(message) ||
+      /rate.?limit/i.test(message) ||
+      /archive requests require/i.test(message) ||
+      /exceeded.*capacity/i.test(message)
+    );
   }
 
   private async _queryFilterAdaptive(
     filter: ethers.DeferredTopicFilter,
     fromBlock: number,
-    toBlock: number
+    toBlock: number,
+    contract?: ethers.Contract
   ): Promise<ethers.EventLog[]> {
-    if (!this.token || fromBlock > toBlock) return [];
+    // Use the explicitly supplied contract (e.g. reportVerification) or fall
+    // back to the token — callers MUST pass the correct contract when scanning
+    // events that belong to a contract other than the token.
+    const c = contract ?? this.token;
+    if (!c || fromBlock > toBlock) return [];
 
     for (let attempt = 0; attempt <= ContractService.RATE_LIMIT_MAX_RETRIES; attempt++) {
       try {
-        const logs = await this.token.queryFilter(filter, fromBlock, toBlock);
+        const logs = await c.queryFilter(filter, fromBlock, toBlock);
         return logs.filter((l): l is ethers.EventLog => "args" in l);
       } catch (err) {
         // Free-tier RPC plans (e.g. Alchemy) rate-limit compute units/sec —
@@ -563,8 +595,8 @@ class ContractService {
         // is what triggers the compute-units-per-second rate limit in the
         // first place, so parallel recursion here would make it worse.
         const mid = fromBlock + Math.floor(range / 2);
-        const left = await this._queryFilterAdaptive(filter, fromBlock, mid);
-        const right = await this._queryFilterAdaptive(filter, mid + 1, toBlock);
+        const left = await this._queryFilterAdaptive(filter, fromBlock, mid, c);
+        const right = await this._queryFilterAdaptive(filter, mid + 1, toBlock, c);
         return [...left, ...right];
       }
     }
@@ -702,11 +734,11 @@ class ContractService {
 
     const rv = this.reportVerification;
     const [requestedLogs, postedLogs, disputedLogs, resolvedLogs, finalizedLogs] = await Promise.all([
-      this._queryFilterAdaptive(rv.filters.VerificationRequested(), fromBlock, toBlock),
-      this._queryFilterAdaptive(rv.filters.VerificationPosted(), fromBlock, toBlock),
-      this._queryFilterAdaptive(rv.filters.VerificationDisputed(), fromBlock, toBlock),
-      this._queryFilterAdaptive(rv.filters.VerificationResolved(), fromBlock, toBlock),
-      this._queryFilterAdaptive(rv.filters.VerificationFinalized(), fromBlock, toBlock),
+      this._queryFilterAdaptive(rv.filters.VerificationRequested(), fromBlock, toBlock, rv),
+      this._queryFilterAdaptive(rv.filters.VerificationPosted(), fromBlock, toBlock, rv),
+      this._queryFilterAdaptive(rv.filters.VerificationDisputed(), fromBlock, toBlock, rv),
+      this._queryFilterAdaptive(rv.filters.VerificationResolved(), fromBlock, toBlock, rv),
+      this._queryFilterAdaptive(rv.filters.VerificationFinalized(), fromBlock, toBlock, rv),
     ]);
 
     // Only the "requested" row persists a blockTimestamp column, so only
@@ -863,12 +895,22 @@ class ContractService {
       }
       const tokenAbi = JSON.parse(readFileSync(tokenAbiPath, "utf-8")).abi;
 
-      // RPC URL — prefer env var, fallback to deployed.json
-      const rpcUrl =
-        process.env.SEPOLIA_RPC_URL ??
-        process.env.ETH_RPC_URL ??
-        deployed.rpcUrl;
+      // RPC URL — build candidate list once (primary env var + public fallbacks),
+      // then pick the current rotation index so a saturated provider triggers
+      // a switch to the next candidate on the following retry.
+      if (this._rpcCandidates.length === 0) {
+        const primary =
+          process.env.SEPOLIA_RPC_URL ??
+          process.env.ETH_RPC_URL ??
+          deployed.rpcUrl;
+        this._rpcCandidates = [
+          primary,
+          ...ContractService.SEPOLIA_RPC_FALLBACKS.filter((u) => u !== primary),
+        ];
+      }
+      const rpcUrl = this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length];
 
+      logger.info({ rpcUrl, rpcIndex: this._rpcIndex }, "contractService: connecting to RPC");
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       await provider.getBlockNumber();
 
@@ -954,15 +996,20 @@ class ContractService {
         network: deployed.network,
       });
 
-      this._subscribeEvents();
+      this._startEventPoller();
       this._consecutiveRateLimitFailures = 0;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (ContractService.isRateLimitError(err)) {
         this._consecutiveRateLimitFailures += 1;
+        // Rotate to the next RPC provider — the current one is saturated.
+        this._rpcIndex += 1;
+        const nextUrl = this._rpcCandidates.length > 0
+          ? this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length]
+          : "(unknown)";
         logger.info(
-          { msg, consecutiveFailures: this._consecutiveRateLimitFailures },
-          "contractService: RPC provider rate-limited during connect — backing off and retrying"
+          { msg, consecutiveFailures: this._consecutiveRateLimitFailures, nextRpc: nextUrl },
+          "contractService: RPC rate-limited during connect — rotating provider and retrying"
         );
       } else {
         this._consecutiveRateLimitFailures = 0;
@@ -972,65 +1019,176 @@ class ContractService {
     }
   }
 
-  private _subscribeEvents(): void {
+  /**
+   * Starts a polling loop that replaces the old contract.on() subscriptions.
+   * ethers v6 contract.on() internally creates eth_newFilter objects and polls
+   * them via eth_getFilterChanges on every tick — each active filter costs
+   * Alchemy compute units, and 8+ simultaneous filters quickly exhaust the
+   * free-tier CU/s budget, producing a wall of 429 errors.
+   *
+   * This poller uses the same eth_getLogs approach as the indexers: one
+   * queryFilter call per event type every EVENT_POLL_INTERVAL_MS seconds,
+   * much cheaper and fully compatible with free-tier RPC plans.
+   */
+  private _startEventPoller(): void {
     if (!this.token) return;
+
+    this._eventPollBlock = 0; // reset — first tick will set the watermark
+    this._eventPollTimer = setInterval(() => {
+      this._pollEvents().catch((err) =>
+        logger.warn({ err }, "contractService: event poll tick failed")
+      );
+    }, ContractService.EVENT_POLL_INTERVAL_MS);
+
+    logger.info("contractService: event listeners active");
+  }
+
+  private _stopEventPoller(): void {
+    if (this._eventPollTimer) {
+      clearInterval(this._eventPollTimer);
+      this._eventPollTimer = null;
+    }
+    this._eventPollBlock = 0;
+  }
+
+  /**
+   * One polling tick: scan [_eventPollBlock, latest] for each relevant token
+   * event and publish results to the WS event bus. On the very first call
+   * (block === 0) we just set the watermark without scanning, so we don't push
+   * stale historical events to newly connected WebSocket clients.
+   */
+  private async _pollEvents(): Promise<void> {
+    if (!this.token || !this.provider) return;
+
+    const latest = await this.provider.getBlockNumber();
+
+    // First call after (re)connect — set watermark only, no scan.
+    if (this._eventPollBlock === 0) {
+      this._eventPollBlock = latest + 1;
+      return;
+    }
+
+    const fromBlock = this._eventPollBlock;
+    if (fromBlock > latest) return;
 
     const token = this.token;
 
-    token.on("MintRequested", (requestId: string, to: string, amount: bigint, proof: string) => {
-      mcxEventBus.publish("MintRequested", { requestId, to, amount: amount.toString(), proof, source: "blockchain" });
-    });
+    // Run sequentially to avoid bursting compute-unit usage; each call already
+    // has exponential-backoff retry via _queryFilterAdaptive. We use
+    // Promise.allSettled so a failure on one event type doesn't skip the rest.
+    const [
+      mintRequestedRes,
+      tokenBirthedRes,
+      aiMintedRes,
+      oracleRejectedRes,
+      agentRegisteredRes,
+      proofAcceptedRes,
+      proofRejectedRes,
+      transferRes,
+    ] = await Promise.allSettled([
+      this._queryFilterAdaptive(token.filters.MintRequested(),      fromBlock, latest, token),
+      this._queryFilterAdaptive(token.filters.TokenBirthed(),       fromBlock, latest, token),
+      this._queryFilterAdaptive(token.filters.AIMinted(),           fromBlock, latest, token),
+      this._queryFilterAdaptive(token.filters.OracleProofRejected(),fromBlock, latest, token),
+      this._queryFilterAdaptive(token.filters.AgentRegistered(),    fromBlock, latest, token),
+      this._queryFilterAdaptive(token.filters.ProofAccepted(),      fromBlock, latest, token),
+      this._queryFilterAdaptive(token.filters.ProofRejected(),      fromBlock, latest, token),
+      this._queryFilterAdaptive(token.filters.Transfer(),           fromBlock, latest, token),
+    ]);
 
-    token.on("TokenBirthed", (agent: string, totalAmount: bigint, rewardAmount: bigint, feeAmount: bigint) => {
-      mcxEventBus.publish("TokenBirthed", {
-        agent,
-        totalAmount:  totalAmount.toString(),
-        rewardAmount: rewardAmount.toString(),
-        feeAmount:    feeAmount.toString(),
-        source: "blockchain",
-      });
-    });
+    // Always advance the watermark even if some event types failed — they'll
+    // be picked up by the indexers' own block-scan cursors.
+    this._eventPollBlock = latest + 1;
 
-    token.on("AIMinted", (to: string, amount: bigint, proof: string) => {
-      mcxEventBus.publish("AgentStatusChanged", { status: "active" });
-      logger.info({ to, amount: ethers.formatEther(amount), proof }, "AIMinted on-chain");
-    });
+    if (agentRegisteredRes.status === "fulfilled") {
+      for (const e of agentRegisteredRes.value) {
+        this.agentAddressCache.add((e.args.agent as string).toLowerCase());
+        mcxEventBus.publish("AgentRegistered", {
+          agent:       e.args.agent as string,
+          name:        e.args.name as string,
+          description: e.args.description as string,
+          registeredAt:(e.args.registeredAt as bigint).toString(),
+          source: "blockchain",
+        });
+      }
+    }
 
-    token.on("OracleProofRejected", (requestId: string, reason: string) => {
-      mcxEventBus.publish("OracleProofRejected", { requestId, reason, source: "blockchain" });
-    });
+    if (mintRequestedRes.status === "fulfilled") {
+      for (const e of mintRequestedRes.value) {
+        mcxEventBus.publish("MintRequested", {
+          requestId: e.args.requestId as string,
+          to:        e.args.to as string,
+          amount:    (e.args.amount as bigint).toString(),
+          proof:     e.args.proof as string,
+          source: "blockchain",
+        });
+      }
+    }
 
-    token.on("AgentRegistered", (agent: string, name: string, description: string, registeredAt: bigint) => {
-      this.agentAddressCache.add(agent.toLowerCase());
-      mcxEventBus.publish("AgentRegistered", {
-        agent,
-        name,
-        description,
-        registeredAt: registeredAt.toString(),
-        source: "blockchain",
-      });
-    });
+    if (tokenBirthedRes.status === "fulfilled") {
+      for (const e of tokenBirthedRes.value) {
+        mcxEventBus.publish("TokenBirthed", {
+          agent:        e.args.agent as string,
+          totalAmount:  (e.args.totalAmount as bigint).toString(),
+          rewardAmount: (e.args.rewardAmount as bigint).toString(),
+          feeAmount:    (e.args.feeAmount as bigint).toString(),
+          source: "blockchain",
+        });
+      }
+    }
 
-    token.on("ProofAccepted", (agent: string, proof: string, amount: bigint, score: bigint, reward: bigint) => {
-      mcxEventBus.publish("ProofAccepted", {
-        agent,
-        proof,
-        amount: amount.toString(),
-        score: score.toString(),
-        reward: reward.toString(),
-        source: "blockchain",
-      });
-    });
+    if (aiMintedRes.status === "fulfilled") {
+      for (const e of aiMintedRes.value) {
+        mcxEventBus.publish("AgentStatusChanged", { status: "active" });
+        logger.info(
+          { to: e.args.to, amount: ethers.formatEther(e.args.amount as bigint), proof: e.args.proof },
+          "AIMinted on-chain"
+        );
+      }
+    }
 
-    token.on("ProofRejected", (agent: string, proof: string, reason: string) => {
-      mcxEventBus.publish("ProofRejected", { agent, proof, reason, source: "blockchain" });
-    });
+    if (oracleRejectedRes.status === "fulfilled") {
+      for (const e of oracleRejectedRes.value) {
+        mcxEventBus.publish("OracleProofRejected", {
+          requestId: e.args.requestId as string,
+          reason:    e.args.reason as string,
+          source: "blockchain",
+        });
+      }
+    }
 
-    token.on("Transfer", (from: string, to: string, value: bigint) => {
-      logger.info({ from, to, value: ethers.formatEther(value) }, "ERC20 Transfer on-chain");
-    });
+    if (proofAcceptedRes.status === "fulfilled") {
+      for (const e of proofAcceptedRes.value) {
+        mcxEventBus.publish("ProofAccepted", {
+          agent:  e.args.agent as string,
+          proof:  e.args.proof as string,
+          amount: (e.args.amount as bigint).toString(),
+          score:  (e.args.score as bigint).toString(),
+          reward: (e.args.reward as bigint).toString(),
+          source: "blockchain",
+        });
+      }
+    }
 
-    logger.info("contractService: event listeners active");
+    if (proofRejectedRes.status === "fulfilled") {
+      for (const e of proofRejectedRes.value) {
+        mcxEventBus.publish("ProofRejected", {
+          agent:  e.args.agent as string,
+          proof:  e.args.proof as string,
+          reason: e.args.reason as string,
+          source: "blockchain",
+        });
+      }
+    }
+
+    if (transferRes.status === "fulfilled") {
+      for (const e of transferRes.value) {
+        logger.info(
+          { from: e.args.from, to: e.args.to, value: ethers.formatEther(e.args.value as bigint) },
+          "ERC20 Transfer on-chain"
+        );
+      }
+    }
   }
 
   /**
@@ -1046,8 +1204,7 @@ class ContractService {
    * automatic recovery for free.
    */
   private _handleDisconnect(): void {
-    if (this.token) this.token.removeAllListeners().catch(() => {});
-    if (this.reportVerification) this.reportVerification.removeAllListeners().catch(() => {});
+    this._stopEventPoller();
     this.provider   = null;
     this.signer     = null;
     this.token      = null;

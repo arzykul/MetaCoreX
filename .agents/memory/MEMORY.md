@@ -10,3 +10,4 @@
 - [MetaCoreX verification API field types](metacorex-verification-api-types.md) — VerificationCertificate/PlatformCashback use raw numeric tier/status and unix-seconds string timestamps, not friendly enums/dates; grep the schema, don't guess.
 - [Disconnect handlers must reschedule reconnect](contractservice-disconnect-must-reschedule.md) — put retry scheduling inside the shared teardown method itself, not each caller, or one caller forgetting it kills the connection forever.
 - [Pushing to GitHub from this Replit sandbox](github-push-from-replit.md) — credential-helper push is unreliable, use http.extraheader Basic auth; workflow-file pushes need `workflow` scope; refs/* writes are hard-blocked.
+- [ethers v6 contract.on() kills free-tier RPC](ethers-contract-on-429.md) — contract.on() creates eth_newFilter+eth_getFilterChanges subscriptions; replace with eth_getLogs polling on Alchemy free tier.
