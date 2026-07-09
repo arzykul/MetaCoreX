@@ -752,6 +752,50 @@ class ContractService {
     }));
   }
 
+  /**
+   * Scans [fromBlock, toBlock] for `AgentRegistered` logs and returns them in
+   * a DB-ready shape, including the block timestamp (fetched per unique
+   * block). Feeds registrationIndexer.ts — the persisted source of truth for
+   * airdrop points, since `registerAgent` is permissionless and never goes
+   * through an API route. Mirrors scanProofAcceptedLogs above.
+   */
+  async scanAgentRegisteredLogs(
+    fromBlock: number,
+    toBlock: number
+  ): Promise<
+    Array<{
+      agentAddress: string;
+      name: string;
+      txHash: string;
+      logIndex: number;
+      blockNumber: number;
+      blockTimestamp: Date;
+    }>
+  > {
+    if (!this.token || !this.provider || fromBlock > toBlock) return [];
+
+    const filter = this.token.filters.AgentRegistered();
+    const events = await this._queryFilterAdaptive(filter, fromBlock, toBlock);
+    if (events.length === 0) return [];
+
+    // Fetch each distinct block's timestamp once, not once per event.
+    const blockNumbers = [...new Set(events.map((e) => e.blockNumber))];
+    const blockTimestamps = new Map<number, Date>();
+    for (const bn of blockNumbers) {
+      const block = await this.provider.getBlock(bn);
+      blockTimestamps.set(bn, block ? new Date(block.timestamp * 1000) : new Date());
+    }
+
+    return events.map((e) => ({
+      agentAddress: (e.args.agent as string).toLowerCase(),
+      name: e.args.name as string,
+      txHash: e.transactionHash,
+      logIndex: e.index,
+      blockNumber: e.blockNumber,
+      blockTimestamp: blockTimestamps.get(e.blockNumber) ?? new Date(),
+    }));
+  }
+
   // ── ReportVerification: event scanning (feeds verificationIndexer.ts) ──────
 
   /**

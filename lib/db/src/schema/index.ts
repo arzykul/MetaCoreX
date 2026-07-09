@@ -10,3 +10,4 @@ export * from "./messages";
 export * from "./agent_memories";
 export * from "./agent_tools";
 export * from "./verification_requests";
+export * from "./airdrop";

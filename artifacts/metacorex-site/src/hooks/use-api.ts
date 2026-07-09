@@ -23,6 +23,10 @@ import {
   getPouRank,
   getPouAgentProfile,
   getPouAgentProofs,
+  getAirdropPoints,
+  getAirdropLeaderboard,
+  postAirdropReferral,
+  postAirdropClaim,
   type ListTasksParams,
   type PouRange,
   type PouBucket,
@@ -47,6 +51,8 @@ export const queryKeys = {
   pouAgentProfile: (address: string) => ["pouAgentProfile", address] as const,
   pouAgentProofs: (address: string, limit: number, offset: number) =>
     ["pouAgentProofs", address, limit, offset] as const,
+  airdropPoints: (address: string) => ["airdropPoints", address] as const,
+  airdropLeaderboard: ["airdropLeaderboard"] as const,
 };
 
 export function useContractInfo() {
@@ -241,6 +247,48 @@ export function usePouAgentProofs(address: string | undefined, limit = 20, offse
     queryFn: () => getPouAgentProofs(address!, limit, offset),
     enabled: !!address,
     refetchInterval: 20000,
+  });
+}
+
+// ─── Sepolia Testnet Airdrop / Points ──────────────────────────────────────
+
+export function useAirdropPoints(address: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.airdropPoints(address ?? ""),
+    queryFn: () => getAirdropPoints(address!),
+    enabled: !!address,
+    refetchInterval: 20000,
+  });
+}
+
+export function useAirdropLeaderboard() {
+  return useQuery({
+    queryKey: queryKeys.airdropLeaderboard,
+    queryFn: getAirdropLeaderboard,
+    refetchInterval: 20000,
+  });
+}
+
+/**
+ * Idempotent — safe to call every time the airdrop page loads with a
+ * connected wallet. Ensures the wallet has its own referral code and (if a
+ * `refCode` is present) attributes it to a referrer, without ever
+ * overwriting an existing attribution.
+ */
+export function useAirdropReferral() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: postAirdropReferral,
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.airdropPoints(variables.walletAddress) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.airdropLeaderboard });
+    },
+  });
+}
+
+export function useAirdropClaim() {
+  return useMutation({
+    mutationFn: postAirdropClaim,
   });
 }
 

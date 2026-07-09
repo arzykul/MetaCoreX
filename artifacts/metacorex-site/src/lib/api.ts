@@ -451,3 +451,82 @@ export async function submitPou(input: {
     newBalance: string | null;
   }>("/api/pou/submit", { method: "POST", body: JSON.stringify(input) });
 }
+
+// ─── Sepolia Testnet Airdrop / Points ──────────────────────────────────────
+// Mounted at /api/airdrop/* — points are derived live from on-chain history
+// (agent_registrations, agent_proofs, airdrop_referrals) and never stored as
+// a mutable counter. This is a testnet-only points program, not a live
+// token distribution — see AirdropClaimResult.claimed (always false today).
+
+export interface AirdropTierInfo {
+  tiers: number[];
+  currentTierIndex: number;
+  nextTier: number | null;
+  pointsToNextTier: number | null;
+}
+
+export interface AirdropPoints extends AirdropTierInfo {
+  address: string;
+  agentRegistered: boolean;
+  proofsCount: number;
+  referralCount: number;
+  totalPoints: number;
+}
+
+export interface AirdropLeaderboardEntry {
+  rank: number;
+  address: string;
+  agentRegistered: boolean;
+  proofsCount: number;
+  referralCount: number;
+  totalPoints: number;
+}
+
+export interface AirdropReferral {
+  walletAddress: string;
+  referralCode: string;
+  referredBy: string | null;
+  referralLink: string;
+}
+
+export interface AirdropClaimResult {
+  claimed: boolean;
+  message: string;
+}
+
+/** GET /api/airdrop/points/:address — derived points snapshot + tier progress. */
+export function getAirdropPoints(address: string): Promise<AirdropPoints> {
+  return apiFetch<AirdropPoints>(`/api/airdrop/points/${address}`);
+}
+
+/** GET /api/airdrop/leaderboard — top 10 wallets by derived total points. */
+export async function getAirdropLeaderboard(): Promise<AirdropLeaderboardEntry[]> {
+  const data = await apiFetch<{ ok: boolean; entries: AirdropLeaderboardEntry[] }>(
+    "/api/airdrop/leaderboard",
+  );
+  return data.entries;
+}
+
+/**
+ * POST /api/airdrop/referral — idempotently fetches/creates `walletAddress`'s
+ * own shareable referral code, and (if `refCode` is given and this wallet
+ * hasn't been attributed yet) links it to that referrer. Safe to call every
+ * time the airdrop page loads with a connected wallet.
+ */
+export function postAirdropReferral(input: {
+  walletAddress: string;
+  refCode?: string;
+}): Promise<AirdropReferral> {
+  return apiFetch<AirdropReferral>("/api/airdrop/referral", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** POST /api/airdrop/claim — stub; testnet points only, never mints/transfers. */
+export function postAirdropClaim(walletAddress: string): Promise<AirdropClaimResult> {
+  return apiFetch<AirdropClaimResult>("/api/airdrop/claim", {
+    method: "POST",
+    body: JSON.stringify({ walletAddress }),
+  });
+}

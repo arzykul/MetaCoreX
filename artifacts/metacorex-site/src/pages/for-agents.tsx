@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Shield, Zap, Scale, FileText, CheckCircle2, Clock, AlertCircle, ShieldCheck } from "lucide-react";
+import { Link } from "wouter";
+import { Search, Shield, Zap, Scale, FileText, CheckCircle2, Clock, AlertCircle, ShieldCheck, Gift } from "lucide-react";
 import { useGetVerificationCertificate, getGetVerificationCertificateQueryKey } from "@workspace/api-client-react";
 
 function getTierLabel(tier: number) {
@@ -79,6 +80,15 @@ export default function ForAgents() {
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
             Contract source verified on Etherscan
           </a>
+          <div>
+            <Link
+              href="/airdrop"
+              className="inline-flex items-center gap-2 mt-4 text-sm font-medium text-primary hover:underline"
+            >
+              <Gift className="w-4 h-4" />
+              Earn testnet airdrop points for registering and submitting proofs →
+            </Link>
+          </div>
         </section>
 
         {/* Tiers Section */}

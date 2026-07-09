@@ -13,6 +13,7 @@ import statsRouter from "./stats.js";
 import openrouterRouter from "./openrouter/index.js";
 import verifyRouter from "./verify.js";
 import platformsRouter from "./platforms.js";
+import airdropRouter from "./airdrop.js";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(statsRouter);
 router.use(openrouterRouter);
 router.use(verifyRouter);
 router.use(platformsRouter);
+router.use(airdropRouter);
 
 export default router;

@@ -37,6 +37,7 @@ Web3/Web4 infrastructure for the MetaCoreX ecosystem — including the ARZY-G ER
 - `artifacts/api-server/src/services/verificationIndexer.ts`, `verificationScorer.ts` — background worker pair that indexes ReportVerification on-chain events and posts standard-tier scores; no HTTP route can trigger `recordVerification` directly
 - `lib/pou-validator/` — shared PoU (Proof of Usefulness) validation package: strict pre-Gemini spam/length checks + the single Gemini-scoring call. Used by the API server (`pouMintService.ts`, `verificationScorer.ts`) and `scripts/src/validator-agent.ts` — no other code path may score a submission.
 - `lib/db/src/schema/verification_requests.ts` — correlates ReportVerification on-chain events with off-chain report text/signatures submitted via the API
+- `lib/db/src/schema/airdrop.ts`, `artifacts/api-server/src/services/registrationIndexer.ts`, `airdropPointsService.ts`, `src/routes/airdrop.ts` — Sepolia-testnet-only points/airdrop program (not a live token distribution): points are derived at query time (never a stored mutable counter), so early participants are automatically credited with no backfill step. Registration +100, each proof +50, each referred wallet that later registers +200. `registrationIndexer.ts` backfills/keeps `agent_registrations` in sync with on-chain `AgentRegistered` events, same pattern as the PoU proof indexer. `/api/airdrop/claim` is a stub — never mints or transfers.
 - `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts, including `verify`/`platforms`)
 - `Dockerfile`, `fly.toml` — Fly.io deployment (multi-stage build, only `@workspace/api-server` runs in prod; no `public/` dir to copy anymore, image serves API only)
 - `render.yaml` — Render Blueprint (alternative host): `metacorex-backend` as a Docker Web Service (reuses `Dockerfile` unchanged, pnpm-based build) + `metacorex-frontend` as a Static Site (pnpm-based build, publishes `artifacts/metacorex-site/dist/public`); frontend talks to the backend via the build-time `VITE_API_URL` env var (see `artifacts/metacorex-site/.env.example`)
@@ -66,6 +67,8 @@ MetaCoreX ARZY-G (`ERC20` + `AccessControl`, no Permit/Pausable) is an ERC-20 to
 - Any agent pays a flat fee (3 ARZY-G standard/Gemini tier, 5 ARZY-G premium/Chainlink tier — premium shipped but admin-disabled until a real subscription is funded) directly from their own wallet to have a free-text report scored
 - Every finalized fee splits 10% referrer cashback (pull-based via `claimRewards()`, or stays with the treasury if no referrer) / 90% protocol treasury — no buyback/reserve cut
 - Optimistic dispute flow: scores post with a 24h challenge window; anyone can dispute with a 2x-fee bond during that window, an `ARBITER_ROLE` address resolves it (upheld → bond refunded + score corrected; rejected → bond forfeited to treasury)
+
+A Sepolia-testnet-only points/airdrop program (`/airdrop` page, `/api/airdrop/*`) previews a future distribution — not a live token payout — and rewards the same on-chain activity above: +100 for registering, +50 per proof, +200 per referred wallet that goes on to register. See [`docs/api.md`](./docs/api.md#airdrop--points-sepolia-testnet-only) and the "Where things live" entry above for how points are computed.
 
 ## Connecting your own agent via GitHub
 

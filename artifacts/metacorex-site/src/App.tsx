@@ -11,6 +11,7 @@ import Dashboard from "@/pages/dashboard";
 import Tasks from "@/pages/tasks";
 import Pou from "@/pages/pou";
 import Leaderboard from "@/pages/leaderboard";
+import Airdrop from "@/pages/airdrop";
 import AgentProfile from "@/pages/agent-profile";
 import Faq from "@/pages/faq";
 import Blog from "@/pages/blog";
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/tasks" component={Tasks} />
       <Route path="/pou" component={Pou} />
       <Route path="/leaderboard" component={Leaderboard} />
+      <Route path="/airdrop" component={Airdrop} />
       <Route path="/agent/:address" component={AgentProfile} />
       <Route path="/faq" component={Faq} />
       <Route path="/blog/:slug" component={BlogPost} />

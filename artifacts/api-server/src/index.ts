@@ -5,6 +5,7 @@ import { logger } from "./lib/logger.js";
 import { mcxEventBus } from "./ws/eventBus.js";
 import { contractService } from "./services/contractService.js";
 import { proofIndexer } from "./services/proofIndexer.js";
+import { registrationIndexer } from "./services/registrationIndexer.js";
 import { verificationIndexer } from "./services/verificationIndexer.js";
 import { verificationScorer } from "./services/verificationScorer.js";
 import { seedAgentTasksIfEmpty } from "./lib/seedAgentTasks.js";
@@ -62,6 +63,11 @@ server.listen(port, () => {
   // Start PoU proof indexer (non-blocking — waits for chain connection, then backfills + polls)
   proofIndexer.start().catch((err) => {
     logger.warn({ err }, "proofIndexer start error");
+  });
+
+  // Start agent registration indexer (feeds airdrop points — non-blocking)
+  registrationIndexer.start().catch((err) => {
+    logger.warn({ err }, "registrationIndexer start error");
   });
 
   // Start ReportVerification indexer + scoring worker (non-blocking — each
