@@ -129,6 +129,19 @@ class ContractService {
   private _rpcCandidates: string[] = [];
   private _rpcIndex = 0;
 
+  // Never log a full RPC URL — providers like Alchemy/Infura embed the API
+  // key directly in the path/query, and this service logs on every connect
+  // attempt (including retries), so an unredacted URL would leak the key
+  // into log aggregators repeatedly.
+  private static _redactRpcUrl(rpcUrl: string): string {
+    try {
+      const url = new URL(rpcUrl);
+      return `${url.protocol}//${url.host}`;
+    } catch {
+      return "(invalid URL)";
+    }
+  }
+
   // Event poller — replaces ethers contract.on() subscriptions which create
   // eth_newFilter + poll via eth_getFilterChanges on every tick (very expensive
   // on Alchemy free tier). Instead, queries new blocks with eth_getLogs every
@@ -594,7 +607,7 @@ class ContractService {
           if (ContractService.isRateLimitError(err)) {
             this._rpcIndex += 1;
             const next = this._rpcCandidates.length > 0
-              ? this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length]
+              ? ContractService._redactRpcUrl(this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length])
               : "(unknown)";
             logger.warn(
               { err, block: fromBlock, nextRpc: next },
@@ -923,7 +936,10 @@ class ContractService {
       }
       const rpcUrl = this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length];
 
-      logger.info({ rpcUrl, rpcIndex: this._rpcIndex }, "contractService: connecting to RPC");
+      logger.info(
+        { rpcUrl: ContractService._redactRpcUrl(rpcUrl), rpcIndex: this._rpcIndex },
+        "contractService: connecting to RPC",
+      );
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       await provider.getBlockNumber();
 
@@ -1018,7 +1034,7 @@ class ContractService {
         // Rotate to the next RPC provider — the current one is saturated.
         this._rpcIndex += 1;
         const nextUrl = this._rpcCandidates.length > 0
-          ? this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length]
+          ? ContractService._redactRpcUrl(this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length])
           : "(unknown)";
         logger.info(
           { msg, consecutiveFailures: this._consecutiveRateLimitFailures, nextRpc: nextUrl },
