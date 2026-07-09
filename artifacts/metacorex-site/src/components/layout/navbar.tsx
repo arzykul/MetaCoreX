@@ -8,7 +8,6 @@ import {
   BookOpen,
   Bot,
   ClipboardList,
-  Cpu,
   FileCheck,
   HelpCircle,
   Home,
@@ -49,9 +48,13 @@ export function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md shadow-soft">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
         <Link href="/" className="flex items-center gap-2 shrink-0" data-testid="link-home-logo">
-          <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
-            <Cpu className="w-5 h-5 text-primary-foreground" />
-          </div>
+          <img
+            src={`${import.meta.env.BASE_URL}logo.svg`}
+            alt="MetaCoreX"
+            className="w-8 h-8"
+            width={32}
+            height={32}
+          />
           <span className="font-display font-extrabold text-xl tracking-tight text-foreground">MetaCoreX</span>
         </Link>
 
