@@ -27,17 +27,17 @@ class VerificationIndexer {
   async start(): Promise<void> {
     await this._waitForChainConnection();
 
-    // Start at the current block — no archive scan required.
-    // Historical verification events are not backfilled; data accumulates
-    // going forward. Use FORCE_RESYNC=true for a full historical rescan
-    // (requires an archive-capable RPC).
     const currentBlock = await contractService.getCurrentBlockNumber();
     if (currentBlock == null) {
       logger.warn("verificationIndexer: could not read current block — skipping start");
       return;
     }
 
-    await this._ensureCursor(currentBlock);
+    // Anchor at the ReportVerification deployment block so all historical
+    // lifecycle events are backfilled on the first run. Falls back to
+    // currentBlock when the block is not recorded in deployed.json.
+    const anchorBlock = contractService.reportVerificationDeploymentBlock ?? currentBlock;
+    await this._ensureCursor(anchorBlock);
 
     if (process.env.FORCE_RESYNC === "true") {
       const anchor = contractService.reportVerificationDeploymentBlock;
@@ -58,7 +58,7 @@ class VerificationIndexer {
       this._sync().catch((err) => logger.warn({ err }, "verificationIndexer: periodic sync failed"));
     }, POLL_INTERVAL_MS);
 
-    logger.info("verificationIndexer: started (new events only, polling every 20s)");
+    logger.info({ anchorBlock }, "verificationIndexer: started — scanning from deployment block, polling every 20s");
   }
 
   private async _waitForChainConnection(): Promise<void> {

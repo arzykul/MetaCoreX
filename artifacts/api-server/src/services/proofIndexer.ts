@@ -25,17 +25,20 @@ class ProofIndexer {
   async start(): Promise<void> {
     await this._waitForChainConnection();
 
-    // Start the cursor at the CURRENT block — no archive scan, no 403
-    // "requires personal token" errors. Historical proofs are not backfilled;
-    // data accumulates going forward from this point.
-    // To do a full historical rescan, set FORCE_RESYNC=true (see below).
     const currentBlock = await contractService.getCurrentBlockNumber();
     if (currentBlock == null) {
       logger.warn("proofIndexer: could not read current block — skipping start");
       return;
     }
 
-    await this._ensureCursor(currentBlock);
+    // Anchor the cursor at the contract's deployment block so all historical
+    // ProofAccepted events are backfilled on the very first run (when no
+    // cursor row exists yet in indexerStateTable). Falls back to currentBlock
+    // if deploymentBlock is unknown. The archive-capable public RPC
+    // (publicnode.com / drpc.org) handles the block-range without auth.
+    // On subsequent restarts the cursor already exists and this has no effect.
+    const anchorBlock = contractService.deploymentBlock ?? currentBlock;
+    await this._ensureCursor(anchorBlock);
 
     // FORCE_RESYNC=true resets the cursor to the deployment block for a full
     // historical backfill. Requires an archive-capable RPC (e.g. Alchemy paid
@@ -60,7 +63,7 @@ class ProofIndexer {
       this._sync().catch((err) => logger.warn({ err }, "proofIndexer: periodic sync failed"));
     }, POLL_INTERVAL_MS);
 
-    logger.info("proofIndexer: started (new events only, polling every 20s)");
+    logger.info({ anchorBlock }, "proofIndexer: started — scanning from deployment block, polling every 20s");
   }
 
   private async _waitForChainConnection(): Promise<void> {

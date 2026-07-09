@@ -2,7 +2,7 @@
   "network": "sepolia",
   "chainId": 11155111,
   "timestamp": "2026-07-05T14:40:00.766Z",
-  "rpcUrl": "https://eth-sepolia.g.alchemy.com/v2/bAhZOHko05cywpKw5gI6r",
+  "rpcUrl": "https://ethereum-sepolia-rpc.publicnode.com",
   "contracts": {
     "ARZYG_ERC20_AI": {
       "address": "0xC3f4231F619F8D22666d70aeaA5D43EA56498770",

@@ -123,6 +123,8 @@ class ContractService {
     "https://ethereum-sepolia-rpc.publicnode.com",
     "https://rpc.sepolia.org",
     "https://sepolia.drpc.org",
+    "https://rpc2.sepolia.org",
+    "https://sepolia.gateway.tenderly.co",
   ];
   private _rpcCandidates: string[] = [];
   private _rpcIndex = 0;
@@ -585,10 +587,21 @@ class ContractService {
 
         const range = toBlock - fromBlock;
         if (range <= 0) {
-          // Minimal 1-block window still fails after retries — propagate so the
-          // caller does NOT advance its scan checkpoint past this block (see
-          // _scanAgentRegistrations). Silently returning [] here would
-          // permanently lose any registration in this block.
+          // Minimal 1-block window still fails after all retries. If the error
+          // is a persistent 403/429 (rate-limit, archive restriction, expired
+          // key), rotate to the next RPC candidate immediately instead of
+          // hammering the same broken provider on every poll tick.
+          if (ContractService.isRateLimitError(err)) {
+            this._rpcIndex += 1;
+            const next = this._rpcCandidates.length > 0
+              ? this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length]
+              : "(unknown)";
+            logger.warn(
+              { err, block: fromBlock, nextRpc: next },
+              "contractService: single-block scan failed with rate-limit/403 — rotating RPC provider"
+            );
+            this._handleDisconnect();
+          }
           throw err;
         }
         // Bisect sequentially (not in parallel) — firing concurrent sub-queries
