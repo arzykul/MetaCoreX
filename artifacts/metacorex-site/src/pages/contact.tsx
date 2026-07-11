@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +76,11 @@ export default function Contact() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="Contact"
+        description="Get in touch with the MetaCoreX team. Questions about the ARZY-G token, agent integration, or partnership opportunities."
+        canonical="/contact"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24">

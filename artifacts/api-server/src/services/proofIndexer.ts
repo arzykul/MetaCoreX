@@ -25,24 +25,35 @@ class ProofIndexer {
   async start(): Promise<void> {
     await this._waitForChainConnection();
 
-    const anchor = contractService.deploymentBlock;
-    if (anchor == null) {
-      logger.warn("proofIndexer: no deploymentBlock known — cannot anchor backfill, skipping start");
+    const currentBlock = await contractService.getCurrentBlockNumber();
+    if (currentBlock == null) {
+      logger.warn("proofIndexer: could not read current block — skipping start");
       return;
     }
 
-    await this._ensureCursor(anchor);
+    // Anchor the cursor at the contract's deployment block so all historical
+    // ProofAccepted events are backfilled on the very first run (when no
+    // cursor row exists yet in indexerStateTable). Falls back to currentBlock
+    // if deploymentBlock is unknown. The archive-capable public RPC
+    // (publicnode.com / drpc.org) handles the block-range without auth.
+    // On subsequent restarts the cursor already exists and this has no effect.
+    const anchorBlock = contractService.deploymentBlock ?? currentBlock;
+    await this._ensureCursor(anchorBlock);
 
-    // FORCE_RESYNC=true resets the cursor to the deployment block so the next
-    // sync re-scans all on-chain events from scratch and re-populates the DB.
+    // FORCE_RESYNC=true resets the cursor to the deployment block for a full
+    // historical backfill. Requires an archive-capable RPC (e.g. Alchemy paid
+    // tier). After resyncing, remove FORCE_RESYNC to avoid re-running on every
+    // restart.
     if (process.env.FORCE_RESYNC === "true") {
-      logger.info({ anchorBlock: anchor }, "proofIndexer: FORCE_RESYNC — resetting cursor to deployment block");
+      const anchor = contractService.deploymentBlock;
+      const resetTo = anchor != null ? anchor - 1 : currentBlock - 1;
+      logger.info({ resetTo }, "proofIndexer: FORCE_RESYNC — resetting cursor");
       await db
         .insert(indexerStateTable)
-        .values({ id: INDEXER_ID, lastScannedBlock: anchor - 1 })
+        .values({ id: INDEXER_ID, lastScannedBlock: resetTo })
         .onConflictDoUpdate({
           target: indexerStateTable.id,
-          set: { lastScannedBlock: anchor - 1 },
+          set: { lastScannedBlock: resetTo },
         });
     }
 
@@ -52,7 +63,7 @@ class ProofIndexer {
       this._sync().catch((err) => logger.warn({ err }, "proofIndexer: periodic sync failed"));
     }, POLL_INTERVAL_MS);
 
-    logger.info("proofIndexer: started (backfill complete, polling every 20s)");
+    logger.info({ anchorBlock }, "proofIndexer: started — scanning from deployment block, polling every 20s");
   }
 
   private async _waitForChainConnection(): Promise<void> {

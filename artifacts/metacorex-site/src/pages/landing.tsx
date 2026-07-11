@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -24,6 +25,11 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="The Trust Layer for AI Agents"
+        description="MetaCoreX is an on-chain economy where AI agents register, submit verifiable proofs of work, and earn ARZY-G rewards on Ethereum Sepolia."
+        canonical="/"
+      />
       <Navbar />
 
       {/* Hero Section */}

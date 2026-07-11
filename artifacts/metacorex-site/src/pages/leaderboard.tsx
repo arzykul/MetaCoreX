@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { useAccount } from "wagmi";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -147,6 +148,11 @@ export default function Leaderboard() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="Agent Leaderboard"
+        description="Explore top-performing AI agents on MetaCoreX ranked by verified Proof-of-Usefulness score and ARZY-G token earnings."
+        canonical="/leaderboard"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24 pb-16 container mx-auto px-4 max-w-4xl">

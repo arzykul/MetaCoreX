@@ -109,11 +109,32 @@ class ContractService {
   private deployed:    DeployedInfo    | null = null;
   private _connected = false;
   private _retryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Guards against overlapping _tryConnect() executions — belt-and-braces
+  // alongside the _scheduleRetry() timer dedup above, in case _tryConnect is
+  // ever invoked from more than one path (e.g. init() racing a retry timer).
+  private _connecting = false;
   // Tracks consecutive rate-limit failures so reconnect backs off instead of
   // hammering an already-throttled provider every RETRY_MS forever — reset
   // to 0 as soon as a connect attempt succeeds or fails for a non-rate-limit
   // reason.
   private _consecutiveRateLimitFailures = 0;
+
+  // A persistently broken primary RPC (malformed/expired SEPOLIA_RPC_URL,
+  // DNS failure, connection refused, etc.) is just as fatal as a rate-limited
+  // one, but isRateLimitError() only recognizes 429/403-style responses. If
+  // the SAME candidate fails this many times in a row for ANY reason, rotate
+  // to the next candidate anyway rather than retrying it forever.
+  private static readonly CONNECT_FAILURE_ROTATE_THRESHOLD = 3;
+  private _consecutiveConnectFailures = 0;
+
+  // ethers v6's JsonRpcProvider never rejects when initial network detection
+  // fails (a malformed/dead URL just makes it log "failed to detect network
+  // ... retry in 1s" and loop internally forever) — so `getBlockNumber()`
+  // below can hang indefinitely instead of throwing, which would silently
+  // defeat the rotation logic above (it only runs from the catch block).
+  // Race the connect attempt against this timeout and treat a timeout as a
+  // connect failure so a hung provider still counts toward rotation.
+  private static readonly CONNECT_TIMEOUT_MS = 8_000;
 
   // RPC failover — on persistent 429 / 403 errors we rotate through a list of
   // candidate URLs (primary env var first, then public fallbacks) so a single
@@ -123,9 +144,52 @@ class ContractService {
     "https://ethereum-sepolia-rpc.publicnode.com",
     "https://rpc.sepolia.org",
     "https://sepolia.drpc.org",
+    "https://rpc2.sepolia.org",
+    "https://sepolia.gateway.tenderly.co",
   ];
   private _rpcCandidates: string[] = [];
   private _rpcIndex = 0;
+
+  // Never log a full RPC URL — providers like Alchemy/Infura embed the API
+  // key directly in the path/query, and this service logs on every connect
+  // attempt (including retries), so an unredacted URL would leak the key
+  // into log aggregators repeatedly.
+  private static _redactRpcUrl(rpcUrl: string): string {
+    try {
+      const url = new URL(rpcUrl);
+      return `${url.protocol}//${url.host}`;
+    } catch {
+      return "(invalid URL)";
+    }
+  }
+
+  // Wraps provider construction + the first real RPC call in a timeout. See
+  // the CONNECT_TIMEOUT_MS comment above — without this, a malformed/dead
+  // URL never rejects, it just hangs while ethers retries internally forever.
+  // On timeout we destroy() the provider so its internal bootstrap loop
+  // stops (otherwise it keeps polling and logging in the background even
+  // after we've moved on to the next candidate).
+  private static async _connectWithTimeout(rpcUrl: string): Promise<ethers.JsonRpcProvider> {
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    let timer: ReturnType<typeof setTimeout>;
+    try {
+      await Promise.race([
+        provider.getBlockNumber(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`RPC connect timed out after ${ContractService.CONNECT_TIMEOUT_MS}ms`)),
+            ContractService.CONNECT_TIMEOUT_MS,
+          );
+        }),
+      ]);
+      return provider;
+    } catch (err) {
+      provider.destroy();
+      throw err;
+    } finally {
+      clearTimeout(timer!);
+    }
+  }
 
   // Event poller — replaces ethers contract.on() subscriptions which create
   // eth_newFilter + poll via eth_getFilterChanges on every tick (very expensive
@@ -585,10 +649,21 @@ class ContractService {
 
         const range = toBlock - fromBlock;
         if (range <= 0) {
-          // Minimal 1-block window still fails after retries — propagate so the
-          // caller does NOT advance its scan checkpoint past this block (see
-          // _scanAgentRegistrations). Silently returning [] here would
-          // permanently lose any registration in this block.
+          // Minimal 1-block window still fails after all retries. If the error
+          // is a persistent 403/429 (rate-limit, archive restriction, expired
+          // key), rotate to the next RPC candidate immediately instead of
+          // hammering the same broken provider on every poll tick.
+          if (ContractService.isRateLimitError(err)) {
+            this._rpcIndex += 1;
+            const next = this._rpcCandidates.length > 0
+              ? ContractService._redactRpcUrl(this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length])
+              : "(unknown)";
+            logger.warn(
+              { err, block: fromBlock, nextRpc: next },
+              "contractService: single-block scan failed with rate-limit/403 — rotating RPC provider"
+            );
+            this._handleDisconnect();
+          }
           throw err;
         }
         // Bisect sequentially (not in parallel) — firing concurrent sub-queries
@@ -670,6 +745,50 @@ class ContractService {
       amountWei: (e.args.amount as bigint).toString(),
       rewardWei: (e.args.reward as bigint).toString(),
       score: Number(e.args.score as bigint),
+      txHash: e.transactionHash,
+      logIndex: e.index,
+      blockNumber: e.blockNumber,
+      blockTimestamp: blockTimestamps.get(e.blockNumber) ?? new Date(),
+    }));
+  }
+
+  /**
+   * Scans [fromBlock, toBlock] for `AgentRegistered` logs and returns them in
+   * a DB-ready shape, including the block timestamp (fetched per unique
+   * block). Feeds registrationIndexer.ts — the persisted source of truth for
+   * airdrop points, since `registerAgent` is permissionless and never goes
+   * through an API route. Mirrors scanProofAcceptedLogs above.
+   */
+  async scanAgentRegisteredLogs(
+    fromBlock: number,
+    toBlock: number
+  ): Promise<
+    Array<{
+      agentAddress: string;
+      name: string;
+      txHash: string;
+      logIndex: number;
+      blockNumber: number;
+      blockTimestamp: Date;
+    }>
+  > {
+    if (!this.token || !this.provider || fromBlock > toBlock) return [];
+
+    const filter = this.token.filters.AgentRegistered();
+    const events = await this._queryFilterAdaptive(filter, fromBlock, toBlock);
+    if (events.length === 0) return [];
+
+    // Fetch each distinct block's timestamp once, not once per event.
+    const blockNumbers = [...new Set(events.map((e) => e.blockNumber))];
+    const blockTimestamps = new Map<number, Date>();
+    for (const bn of blockNumbers) {
+      const block = await this.provider.getBlock(bn);
+      blockTimestamps.set(bn, block ? new Date(block.timestamp * 1000) : new Date());
+    }
+
+    return events.map((e) => ({
+      agentAddress: (e.args.agent as string).toLowerCase(),
+      name: e.args.name as string,
       txHash: e.transactionHash,
       logIndex: e.index,
       blockNumber: e.blockNumber,
@@ -873,6 +992,8 @@ class ContractService {
   // ── Connection lifecycle ────────────────────────────────────────────────────
 
   private async _tryConnect(): Promise<void> {
+    if (this._connecting) return;
+    this._connecting = true;
     if (this._retryTimer) { clearTimeout(this._retryTimer); this._retryTimer = null; }
 
     try {
@@ -910,9 +1031,11 @@ class ContractService {
       }
       const rpcUrl = this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length];
 
-      logger.info({ rpcUrl, rpcIndex: this._rpcIndex }, "contractService: connecting to RPC");
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
-      await provider.getBlockNumber();
+      logger.info(
+        { rpcUrl: ContractService._redactRpcUrl(rpcUrl), rpcIndex: this._rpcIndex },
+        "contractService: connecting to RPC",
+      );
+      const provider = await ContractService._connectWithTimeout(rpcUrl);
 
       this.provider = provider;
 
@@ -998,24 +1121,45 @@ class ContractService {
 
       this._startEventPoller();
       this._consecutiveRateLimitFailures = 0;
+      this._consecutiveConnectFailures = 0;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (ContractService.isRateLimitError(err)) {
-        this._consecutiveRateLimitFailures += 1;
-        // Rotate to the next RPC provider — the current one is saturated.
+      const rateLimited = ContractService.isRateLimitError(err);
+      this._consecutiveConnectFailures += 1;
+
+      // Rotate to the next RPC candidate when either: (a) it's a recognized
+      // rate-limit/403 signal — no point retrying an already-saturated
+      // provider, or (b) the same candidate has now failed repeatedly for
+      // ANY reason (bad URL, DNS failure, connection refused, etc.) — a
+      // persistently broken primary RPC must not block indexing forever
+      // when public fallbacks exist.
+      const shouldRotate =
+        this._rpcCandidates.length > 1 &&
+        (rateLimited || this._consecutiveConnectFailures >= ContractService.CONNECT_FAILURE_ROTATE_THRESHOLD);
+
+      if (shouldRotate) {
         this._rpcIndex += 1;
-        const nextUrl = this._rpcCandidates.length > 0
-          ? this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length]
-          : "(unknown)";
+        this._consecutiveConnectFailures = 0;
+        if (rateLimited) this._consecutiveRateLimitFailures += 1;
+        const nextUrl = ContractService._redactRpcUrl(
+          this._rpcCandidates[this._rpcIndex % this._rpcCandidates.length]
+        );
         logger.info(
-          { msg, consecutiveFailures: this._consecutiveRateLimitFailures, nextRpc: nextUrl },
-          "contractService: RPC rate-limited during connect — rotating provider and retrying"
+          { msg, rateLimited, consecutiveFailures: this._consecutiveRateLimitFailures, nextRpc: nextUrl },
+          rateLimited
+            ? "contractService: RPC rate-limited during connect — rotating provider and retrying"
+            : "contractService: RPC connect failed repeatedly — rotating provider and retrying"
         );
       } else {
-        this._consecutiveRateLimitFailures = 0;
-        logger.info({ msg }, "contractService: node not ready — retrying");
+        if (!rateLimited) this._consecutiveRateLimitFailures = 0;
+        logger.info(
+          { msg, rateLimited, consecutiveConnectFailures: this._consecutiveConnectFailures },
+          "contractService: node not ready — retrying"
+        );
       }
       this._handleDisconnect();
+    } finally {
+      this._connecting = false;
     }
   }
 
@@ -1218,6 +1362,15 @@ class ContractService {
   }
 
   private _scheduleRetry(): void {
+    // Multiple independent callers (proofIndexer, verificationIndexer, the
+    // event poller) can all hit a failing RPC around the same time and each
+    // call _handleDisconnect() -> _scheduleRetry(). Without clearing any
+    // already-pending timer first, each call stacks up its own setTimeout,
+    // so several end up firing within milliseconds of each other and
+    // _tryConnect() runs concurrently multiple times — duplicating every
+    // contract connection, event poller, and indexer RPC call and making
+    // rate-limit/archive-restriction errors worse, not better.
+    if (this._retryTimer) { clearTimeout(this._retryTimer); this._retryTimer = null; }
     const delay =
       this._consecutiveRateLimitFailures > 0
         ? Math.min(RETRY_MS * 2 ** this._consecutiveRateLimitFailures, MAX_RETRY_MS)

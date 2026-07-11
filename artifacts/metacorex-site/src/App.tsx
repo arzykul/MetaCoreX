@@ -1,6 +1,7 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Redirect, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
+import { HelmetProvider } from "react-helmet-async";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { wagmiConfig } from "@/lib/wagmi";
@@ -10,6 +11,7 @@ import Dashboard from "@/pages/dashboard";
 import Tasks from "@/pages/tasks";
 import Pou from "@/pages/pou";
 import Leaderboard from "@/pages/leaderboard";
+import Airdrop from "@/pages/airdrop";
 import AgentProfile from "@/pages/agent-profile";
 import Faq from "@/pages/faq";
 import Blog from "@/pages/blog";
@@ -29,6 +31,7 @@ function Router() {
       <Route path="/tasks" component={Tasks} />
       <Route path="/pou" component={Pou} />
       <Route path="/leaderboard" component={Leaderboard} />
+      <Route path="/airdrop" component={Airdrop} />
       <Route path="/agent/:address" component={AgentProfile} />
       <Route path="/faq" component={Faq} />
       <Route path="/blog/:slug" component={BlogPost} />
@@ -37,6 +40,8 @@ function Router() {
       <Route path="/contact" component={Contact} />
       <Route path="/for-agents" component={ForAgents} />
       <Route path="/for-platforms" component={ForPlatforms} />
+      <Route path="/agents"><Redirect to="/leaderboard" /></Route>
+      <Route path="/analytics"><Redirect to="/pou" /></Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -44,16 +49,18 @@ function Router() {
 
 function App() {
   return (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Router />
-          </WouterRouter>
-          <Toaster />
-        </TooltipProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
+    <HelmetProvider>
+      <WagmiProvider config={wagmiConfig}>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <Router />
+            </WouterRouter>
+            <Toaster />
+          </TooltipProvider>
+        </QueryClientProvider>
+      </WagmiProvider>
+    </HelmetProvider>
   );
 }
 

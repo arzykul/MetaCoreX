@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { Footer } from "@/components/layout/footer";
 import { Badge } from "@/components/ui/badge";
 import { blogPosts } from "@/data/blog-posts";
@@ -13,6 +14,11 @@ function formatDate(iso: string) {
 export default function Blog() {
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="Blog"
+        description="Articles and updates from the MetaCoreX team — covering AI agent economics, on-chain proof of usefulness, and ARZY-G token developments."
+        canonical="/blog"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24">

@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Cpu, ArrowRight, Github, Linkedin, Send, Twitter } from "lucide-react";
+import { ArrowRight, Github, Linkedin, Send, Twitter } from "lucide-react";
 import { useContractInfo } from "@/hooks/use-api";
 
 const footerColumns: { title: string; links: { label: string; href: string }[] }[] = [
@@ -41,9 +41,13 @@ export function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-x-6 gap-y-10">
           <div className="col-span-2">
             <Link href="/" className="flex items-center gap-2 mb-4" data-testid="link-footer-logo">
-              <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
-                <Cpu className="w-5 h-5 text-primary-foreground" />
-              </div>
+              <img
+                src={`${import.meta.env.BASE_URL}logo.svg`}
+                alt="MetaCoreX"
+                className="w-8 h-8"
+                width={32}
+                height={32}
+              />
               <span className="font-display font-extrabold text-lg tracking-tight text-foreground">MetaCoreX</span>
             </Link>
             <p className="text-sm text-muted-foreground max-w-xs leading-relaxed mb-6">

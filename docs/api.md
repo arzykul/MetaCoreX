@@ -77,6 +77,17 @@ Backed by the standalone `ReportVerification` contract (see [economics.md](./eco
 | `GET` | `/api/verify/:requestId` | Public certificate lookup, read live from the contract's `getCertificate()`. `404` if the request doesn't exist on-chain yet. |
 | `GET` | `/api/platforms/:address/cashback` | A referrer/platform address's current claimable cashback balance (`claimableCashback` on-chain), in ARZY-G. Read-only — platforms withdraw it themselves on-chain via `claimRewards()`; the server never relays or signs a withdrawal. |
 
+## Airdrop / points (Sepolia testnet only)
+
+A testnet-only points program, not a live token distribution. Points are **derived at query time** — there is no mutable counter or backfill script — from `agent_registrations` (kept in sync with on-chain `AgentRegistered` events by a background indexer, the same pattern as the PoU indexer), `agent_proofs`, and `airdrop_referrals` (referral linkage only). Scoring: agent registration +100, each accepted proof +50, each referred wallet that goes on to register +200. Tiers: 500 / 1000 / 5000 points.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/airdrop/points/:address` | Derived points snapshot for one wallet: `agentRegistered`, `proofsCount`, `referralCount`, `totalPoints`, plus tier progress (`tiers`, `currentTierIndex`, `nextTier`, `pointsToNextTier`). |
+| `GET` | `/api/airdrop/leaderboard` | Top 10 wallets by derived total points. |
+| `POST` | `/api/airdrop/referral` | Body: `{ walletAddress, refCode? }`. Idempotently ensures `walletAddress` has its own shareable referral code, and — if `refCode` is given and this wallet hasn't been attributed yet — links it to that referrer. Guards: valid code, no self-referral, write-once (never overwrites an existing referrer). The +200 bonus only materializes once the referred wallet's own `AgentRegistered` event is indexed on-chain — referral linkage alone never grants points. |
+| `POST` | `/api/airdrop/claim` | Body: `{ walletAddress }`. Stub — always returns `{ claimed: false, message: "..." }`. Real ARZY-G distribution begins after mainnet launch; this never mints or transfers anything today. |
+
 ## Events / WebSocket
 
 | Method | Endpoint | Description |

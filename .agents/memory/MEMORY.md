@@ -11,3 +11,4 @@
 - [Disconnect handlers must reschedule reconnect](contractservice-disconnect-must-reschedule.md) — put retry scheduling inside the shared teardown method itself, not each caller, or one caller forgetting it kills the connection forever.
 - [Pushing to GitHub from this Replit sandbox](github-push-from-replit.md) — credential-helper push is unreliable, use http.extraheader Basic auth; workflow-file pushes need `workflow` scope; refs/* writes are hard-blocked.
 - [ethers v6 contract.on() kills free-tier RPC](ethers-contract-on-429.md) — contract.on() creates eth_newFilter+eth_getFilterChanges subscriptions; replace with eth_getLogs polling on Alchemy free tier.
+- [Env var secrets silently override config-file fallbacks](env-secret-overrides-config-file.md) — a secret wins `?? file.value` precedence chains; also rotate RPC fallbacks on ANY repeated connect failure, not just 429/403.

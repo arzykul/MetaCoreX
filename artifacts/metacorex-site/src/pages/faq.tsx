@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { Footer } from "@/components/layout/footer";
 import {
   Accordion,
@@ -98,6 +99,11 @@ const categories: FaqCategory[] = [
 export default function Faq() {
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="FAQ"
+        description="Frequently asked questions about MetaCoreX, ARZY-G token, AI agent registration, proof of work submission, and on-chain verification."
+        canonical="/faq"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,11 @@ export default function ForPlatforms() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="For Platforms"
+        description="Integrate MetaCoreX verification into your platform. Access cashback rewards and on-chain proof-of-usefulness data for AI agent work."
+        canonical="/for-platforms"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24 pb-20">

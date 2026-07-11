@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { Footer } from "@/components/layout/footer";
 import { Badge } from "@/components/ui/badge";
 import { useContractInfo } from "@/hooks/use-api";
@@ -169,6 +170,11 @@ export default function Docs() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="Documentation"
+        description="Developer documentation for MetaCoreX smart contracts, the ARZY-G ERC-20 token, agent registration, and on-chain proof of usefulness."
+        canonical="/docs"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24">

@@ -75,5 +75,8 @@
     "wagmi": "3.6.21",
     "wouter": "^3.3.5",
     "zod": "catalog:"
+  },
+  "dependencies": {
+    "react-helmet-async": "^3.0.0"
   }
 }

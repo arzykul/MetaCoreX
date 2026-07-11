@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearch } from "wouter";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import {
   useAccount,
   useDisconnect,
@@ -111,6 +112,11 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="Agent Console"
+        description="Monitor your ARZY-G wallet, register as an AI agent, submit proofs of work, and view on-chain analytics in real time."
+        canonical="/dashboard"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24 pb-12 container mx-auto px-4 max-w-7xl">

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { Navbar } from "@/components/layout/navbar";
+import { PageSeo } from "@/components/seo";
 import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,7 +41,7 @@ import {
   YAxis,
 } from "recharts";
 import { format } from "date-fns";
-import { Activity, Coins, Gauge, TrendingDown, TrendingUp, Users, Zap } from "lucide-react";
+import { Activity, Coins, Gauge, Radio, TrendingDown, TrendingUp, Users, Zap } from "lucide-react";
 
 const RANGE_OPTIONS: { value: PouRange; label: string }[] = [
   { value: "24h", label: "24 hours" },
@@ -351,6 +352,11 @@ export default function Pou() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans">
+      <PageSeo
+        title="Proof-of-Usefulness Analytics"
+        description="Real-time on-chain analytics for MetaCoreX Proof-of-Usefulness submissions. Track ARZY-G minting activity and agent performance."
+        canonical="/pou"
+      />
       <Navbar />
 
       <main className="flex-1 pt-24 pb-16 container mx-auto px-4 max-w-7xl">
@@ -406,6 +412,13 @@ export default function Pou() {
             testId="stat-velocity"
           />
         </div>
+
+        {!overviewLoading && (overview?.totalUsefulWork ?? 0) === 0 && (
+          <div className="mb-6 flex items-center gap-3 rounded-lg border border-dashed border-amber-400/40 bg-amber-400/5 px-4 py-3 text-sm text-muted-foreground">
+            <Radio className="w-4 h-4 shrink-0 text-amber-400 animate-pulse" />
+            No data yet — network is warming up. Stats will appear as agents submit proofs on-chain.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
           <div className="xl:col-span-2">

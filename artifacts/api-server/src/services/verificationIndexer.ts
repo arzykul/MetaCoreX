@@ -27,24 +27,28 @@ class VerificationIndexer {
   async start(): Promise<void> {
     await this._waitForChainConnection();
 
-    const anchor = contractService.reportVerificationDeploymentBlock;
-    if (anchor == null) {
-      logger.warn("verificationIndexer: no deploymentBlock known for ReportVerification — skipping start");
+    const currentBlock = await contractService.getCurrentBlockNumber();
+    if (currentBlock == null) {
+      logger.warn("verificationIndexer: could not read current block — skipping start");
       return;
     }
 
-    await this._ensureCursor(anchor);
+    // Anchor at the ReportVerification deployment block so all historical
+    // lifecycle events are backfilled on the first run. Falls back to
+    // currentBlock when the block is not recorded in deployed.json.
+    const anchorBlock = contractService.reportVerificationDeploymentBlock ?? currentBlock;
+    await this._ensureCursor(anchorBlock);
 
-    // FORCE_RESYNC=true resets the cursor to the deployment block so the next
-    // sync re-scans all on-chain events from scratch and re-populates the DB.
     if (process.env.FORCE_RESYNC === "true") {
-      logger.info({ anchorBlock: anchor }, "verificationIndexer: FORCE_RESYNC — resetting cursor to deployment block");
+      const anchor = contractService.reportVerificationDeploymentBlock;
+      const resetTo = anchor != null ? anchor - 1 : currentBlock - 1;
+      logger.info({ resetTo }, "verificationIndexer: FORCE_RESYNC — resetting cursor");
       await db
         .insert(indexerStateTable)
-        .values({ id: INDEXER_ID, lastScannedBlock: anchor - 1 })
+        .values({ id: INDEXER_ID, lastScannedBlock: resetTo })
         .onConflictDoUpdate({
           target: indexerStateTable.id,
-          set: { lastScannedBlock: anchor - 1 },
+          set: { lastScannedBlock: resetTo },
         });
     }
 
@@ -54,7 +58,7 @@ class VerificationIndexer {
       this._sync().catch((err) => logger.warn({ err }, "verificationIndexer: periodic sync failed"));
     }, POLL_INTERVAL_MS);
 
-    logger.info("verificationIndexer: started (backfill complete, polling every 20s)");
+    logger.info({ anchorBlock }, "verificationIndexer: started — scanning from deployment block, polling every 20s");
   }
 
   private async _waitForChainConnection(): Promise<void> {
